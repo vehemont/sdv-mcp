@@ -1,0 +1,41 @@
+name: Publish to PyPI
+
+# Publishes to PyPI when you push a version tag (e.g. v0.1.0).
+# Uses PyPI Trusted Publishing (OIDC) - no API tokens/secrets to manage.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Build sdist + wheel
+        run: uv build
+      - name: Smoke test (import built wheel + >=40 tools)
+        run: >-
+          uv run --no-project --with dist/*.whl python -c
+          "import asyncio, sdv_mcp_server as S;
+          n=len(asyncio.run(S.mcp.list_tools())); print('tools:', n); assert n>=40, n"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi          # optional but recommended; add it in repo Settings > Environments
+    permissions:
+      id-token: write          # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

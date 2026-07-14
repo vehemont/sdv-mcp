@@ -1,10 +1,8 @@
-# Stardew Save MCP
+# sdv-mcp
 
-Read-only MCP server that reads a Stardew Valley save and answers questions about it. 40 tools: parse the save, verify game rules against the wiki, run calculators, and locate stuff in chests. Built it because I wanted to ask "how many kegs to clear my backlog" or "where's my Ancient Fruit" and get an actual answer instead of alt-tabbing to the wiki.
+I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. This is a read-only MCP server that reads a Stardew Valley save and answers questions about it. It includes 40 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
 
-Nothing writes to the save. Ever. It opens the file read-only, strips the trailing null padding the game leaves, parses with ElementTree, and hands back JSON. The save is your farm's *state*; the wiki is the game's *rules*; the calculators do the math. Keep those three straight and you don't get hallucinated numbers.
-
-Works on any 1.5/1.6 save (host + all farmhands, any names). Tested against 1.6.15.
+> This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Stardew Valley makes a one-night-before backup automatically, denoted by the sufix _old in the filename.
 
 ## Requirements
 - Python 3.10+
@@ -13,11 +11,32 @@ Works on any 1.5/1.6 save (host + all farmhands, any names). Tested against 1.6.
 Keep the four modules in the same folder — the server imports the others from its own dir.
 
 ## Install into a client
-Add to your MCP config (e.g. `claude_desktop_config.json`), absolute path to the server:
+
+### Recommended: uvx (auto-download, npx-style)
+Needs [uv](https://docs.astral.sh/uv/). uvx clones/builds/caches the repo and runs
+it — no manual install, no venv:
 ```json
 {
   "mcpServers": {
-    "stardew-save": {
+    "sdv-mcp": {
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/vehemont/sdv-mcp",
+        "sdv-mcp",
+        "--save-dir", "C:/Users/you/AppData/Roaming/StardewValley/Saves/FarmName_123456"
+      ]
+    }
+  }
+}
+```
+Pin a version with `git+https://github.com/vehemont/sdv-mcp@v0.1.0`. Once it's on
+PyPI this collapses to `"args": ["sdv-mcp", "--save-dir", "..."]`.
+
+### Alternative: run a local checkout
+```json
+{
+  "mcpServers": {
+    "sdv-mcp": {
       "command": "python",
       "args": [
         "/path/to/sdv-mcp/sdv_mcp_server.py",
@@ -27,9 +46,10 @@ Add to your MCP config (e.g. `claude_desktop_config.json`), absolute path to the
   }
 }
 ```
-macOS/Linux use `python3`. Runs on stdio. Point `--save-dir` at your save FOLDER
-(the main save file inside is auto-located); or `--save` at the file itself. Skip
-both and it auto-discovers.
+macOS/Linux use `python3`; `pip install -r requirements.txt` first.
+
+Either way: runs on stdio. Point `--save-dir` at your save FOLDER (main file
+auto-located) or `--save` at the file; skip both and it auto-discovers.
 
 ## Picking a save
 Precedence for which save a tool reads:
@@ -49,11 +69,29 @@ given a folder, the main save file is auto-located (ignores `_old` backups and
 Env-var config example (instead of the CLI flag):
 ```json
 "env": { "SDV_SAVE_DIR": "C:/Users/you/AppData/Roaming/StardewValley/Saves/FarmName_123456" }
-```
+``
 
-Homelab note: point it at a NAS share path if that's where the save lives. Reads are
-cached by file mtime, so repeated calls in a session are cheap and always reflect the
-last night's sleep (the game only writes on sleep).
+## Disabling tools
+Any tool you consider cheating/unfair can be turned off so the model never sees it.
+Two knobs, both settable as a CLI arg (wins) or an env var:
+
+- **Denylist** — `--disable-tools a,b,c` or `SDV_DISABLE_TOOLS=a,b,c`. Serves everything except those.
+- **Allowlist** — `--enable-tools a,b,c` or `SDV_ENABLE_TOOLS=a,b,c`. Serves *only* those (disable is applied after).
+
+```json
+{
+  "mcpServers": {
+    "sdv-mcp": {
+      "command": "python",
+      "args": [
+        "/path/to/sdv-mcp/sdv_mcp_server.py",
+        "--save-dir", "C:/Users/you/AppData/Roaming/StardewValley/Saves/FarmName_123456",
+        "--disable-tools", "find_item,missing_museum,perfection"
+      ]
+    }
+  }
+}
+```
 
 ## Tools (40)
 
@@ -126,6 +164,27 @@ Item classification (keg fruit/veg) is data-driven from each item's own `<catego
 ## Verified, not guessed
 The calculator constants were checked against the wiki, not pulled from memory: crop quality formula + multipliers (iridium 2x / gold 1.5x / silver 1.25x), farming + fishing XP formulas, Tiller +10% / Rancher +20% / Artisan +40%, keg/jar multipliers, sprinkler recipes, fish-pond reproduction, Perfection weights, animal-product prices. Reference tables (crops, prices, fish difficulty) live at the top of `sdv_calc.py` and `sdv_parser.py` — extend them, or cross-check anything with the `wiki_*` tools.
 
+## Releasing
+CI publishes to PyPI on a version tag via **Trusted Publishing** (OIDC - no tokens).
+One-time setup on PyPI: your account -> Publishing -> add a *pending* publisher:
+- PyPI project: `sdv-mcp`  Owner: `vehemont`  Repo: `sdv-mcp`
+- Workflow: `publish.yml`  Environment: `pypi`
+
+Then, per release:
+```bash
+# bump version in pyproject.toml, commit, then:
+git tag v0.1.0 && git push --tags
+```
+`.github/workflows/publish.yml` builds, smoke-tests the wheel, and publishes.
+
+First release without waiting on CI (uses your PyPI token):
+```bash
+uv build && uv publish   # prompts for token, or set UV_PUBLISH_TOKEN
+```
+
+## Packaging
+`pyproject.toml` makes this a real package: `uv build` produces a wheel, and the `sdv-mcp` console script maps to `sdv_mcp_server:main`. Publish with `uv publish`.
+
 ## Files
 - `sdv_parser.py` — the read-only save parser (ElementTree)
 - `sdv_wiki.py` — MediaWiki Action API client (api.php; the wiki's rest.php returns empty, so Action API it is), cached + rate-limited
@@ -136,3 +195,4 @@ The calculator constants were checked against the wiki, not pulled from memory: 
 - Vanilla + whatever this wiki documents. Modded content lives on separate wikis.
 - Full Shipment / missing-recipes by *name* aren't built yet — `perfection` gives the counts.
 - Wiki tools need outbound network. The save tools don't.
+                                                                                                                                                                                                                                                                                                                                                                                                                                   

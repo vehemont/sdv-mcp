@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sdv-mcp"
+version = "0.1.0"
+description = "Read-only MCP server for inspecting Stardew Valley save files: save parser, Stardew Wiki verification, and 17 calculators across 40 tools."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "vehemont" }]
+keywords = ["stardew-valley", "mcp", "model-context-protocol", "savegame"]
+dependencies = ["mcp>=1.2.0"]
+
+[project.urls]
+Homepage = "https://github.com/vehemont/sdv-mcp"
+Repository = "https://github.com/vehemont/sdv-mcp"
+Issues = "https://github.com/vehemont/sdv-mcp/issues"
+
+[project.scripts]
+sdv-mcp = "sdv_mcp_server:main"
+
+[tool.setuptools]
+py-modules = ["sdv_mcp_server", "sdv_parser", "sdv_wiki", "sdv_calc"]

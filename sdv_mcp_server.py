@@ -17,7 +17,7 @@ Contract notes for the calling model:
 Run:  python sdv_mcp_server.py     Requires: pip install "mcp[cli]".
 """
 from __future__ import annotations
-import os
+import os, sys
 from typing import Annotated, Literal, Any
 try:
     from typing import TypedDict
@@ -29,7 +29,7 @@ import sdv_parser as P
 import sdv_wiki as WIKI
 import sdv_calc as CALC
 
-mcp = FastMCP("stardew-save")
+mcp = FastMCP("sdv-mcp")
 
 # ---- reusable annotated parameter types -----------------------------------
 SavePath = Annotated[str, Field(description="Path to a save file OR a save folder (e.g. .../Saves/Farm_123 "
@@ -78,6 +78,30 @@ def _resolve(save_path: str = ""):
         raise ValueError("Multiple saves found; configure one (--save-dir / SDV_SAVE_DIR) or pass "
                          "save_path. Options: " + "; ".join(f"{s['farm']} -> {s['path']}" for s in saves))
     return P.load_save(saves[0]['path']), saves[0]['path']
+
+# ---- optional tool gating (disable tools deemed "cheating"/unfair) ---------
+def _csv(v):
+    return [t.strip() for t in (v or "").split(",") if t.strip()]
+
+def apply_tool_policy(disable=None, enable=None):
+    """Prune the registered tool set. `enable` (allowlist) keeps only those tools;
+    `disable` (denylist) removes tools. Unknown names are warned and ignored.
+    Returns (removed, unknown)."""
+    names = set(mcp._tool_manager._tools)
+    disable = set(disable or []); enable = set(enable or [])
+    unknown = sorted((disable | enable) - names)
+    keep = (enable & names) if enable else set(names)
+    keep -= disable
+    removed = sorted(names - keep)
+    for n in removed:
+        mcp.remove_tool(n)
+    return removed, unknown
+
+def tool_policy_from_config(args=None):
+    """Resolve disable/enable lists: CLI arg overrides the env var for each."""
+    dis = _csv(getattr(args, "disable_tools", None)) or _csv(os.environ.get("SDV_DISABLE_TOOLS"))
+    ena = _csv(getattr(args, "enable_tools", None)) or _csv(os.environ.get("SDV_ENABLE_TOOLS"))
+    return dis, ena
 
 # ======================= output schemas (calculators) =====================
 class SkillForecast(TypedDict, total=False):
@@ -507,12 +531,30 @@ def _parse_args():
     g.add_argument("--save-dir", metavar="DIR",
                    help="Path to a save FOLDER (.../Saves/Farm_123); the main save file is "
                         "auto-located inside. Overrides SDV_SAVE_PATH/SDV_SAVE_DIR.")
+    ap.add_argument("--disable-tools", metavar="a,b,c",
+                   help="Comma-separated tool names to DISABLE (e.g. tools you consider "
+                        "cheating). Overrides SDV_DISABLE_TOOLS.")
+    ap.add_argument("--enable-tools", metavar="a,b,c",
+                   help="Comma-separated ALLOWLIST - only these tools are served. "
+                        "Overrides SDV_ENABLE_TOOLS. Applied before --disable-tools.")
     return ap.parse_args()
 
-if __name__ == "__main__":
+def main():
+    """Console entry point (see [project.scripts] in pyproject.toml)."""
+    global DEFAULT_SAVE
     _args = _parse_args()
     if _args.save:
         DEFAULT_SAVE = _args.save
     elif _args.save_dir:
         DEFAULT_SAVE = _args.save_dir
+    _disable, _enable = tool_policy_from_config(_args)
+    if _disable or _enable:
+        _removed, _unknown = apply_tool_policy(_disable, _enable)
+        if _unknown:
+            print("[sdv-mcp] unknown tool name(s) ignored: " + ", ".join(_unknown), file=sys.stderr)
+        if _removed:
+            print(f"[sdv-mcp] disabled {len(_removed)} tool(s): " + ", ".join(_removed), file=sys.stderr)
     mcp.run()
+
+if __name__ == "__main__":
+    main()
