@@ -3,7 +3,7 @@
 I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. This is a read-only MCP server that reads a Stardew Valley save and answers questions about it. It includes 47 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
 
 > [!CAUTION]
-> This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Then once you feel comfortable, you can point it at your real save, 
+> This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Then once you feel comfortable, you can point it at your real save to receive the save-per-night updates. 
 
 
 Example questions:
