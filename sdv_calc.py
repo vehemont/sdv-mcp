@@ -393,20 +393,28 @@ def animal_product_quality(root=None, friendship=None, mood=None, animal_type=No
                 'result':odds(friendship, mood if mood is not None else 255, profession_bonus)}
     if root is None:
         return {'error':'pass a save (root) or friendship/mood'}
+    def _num(el):
+        """Parse an XML element's int text, tolerating missing/empty/nil/float values."""
+        if el is None or el.text is None:
+            return None
+        try:
+            return int(float(el.text.strip()))
+        except (ValueError, AttributeError):
+            return None
     has_coop = _has_profession(root,'Coopmaster'); has_shep = _has_profession(root,'Shepherd')
     out = []
     for a in root.iter('FarmAnimal'):
         t = a.find('type'); fr = a.find('friendshipTowardFarmer'); md = a.find('happiness')
         nm = a.find('name')
-        if t is None: continue
-        atype = t.text
+        atype = t.text if t is not None else None
+        fr_v = _num(fr); md_v = _num(md)
         prof = (has_coop and atype in COOP_ANIMALS) or (has_shep and atype in BARN_ANIMALS)
         out.append({'name':nm.text if nm is not None else None,'type':atype,
-                    'friendship':int(fr.text) if fr is not None else None,
-                    'mood':int(md.text) if md is not None else None,
+                    'friendship':fr_v,
+                    'mood':md_v,
                     'profession_bonus':prof,
-                    **odds(int(fr.text) if fr is not None else 0,
-                           int(md.text) if md is not None else 0, prof)})
+                    **odds(fr_v if fr_v is not None else 0,
+                           md_v if md_v is not None else 0, prof)})
     return {'from':'save','animals':out,
             'note':'score = friendship/1000 - (1 - mood/225) + 0.333 (Coopmaster/Shepherd). '
                    'Iridium only if score > 0.95. Verified vs wiki.'}

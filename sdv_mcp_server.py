@@ -17,7 +17,7 @@ Contract notes for the calling model:
 Run:  python sdv_mcp_server.py     Requires: pip install "mcp[cli]".
 """
 from __future__ import annotations
-import os, sys
+import os, sys, logging, functools, inspect, tempfile
 from typing import Annotated, Literal, Any
 try:
     from typing import TypedDict
@@ -28,6 +28,66 @@ from mcp.server.fastmcp import FastMCP
 import sdv_parser as P
 import sdv_wiki as WIKI
 import sdv_calc as CALC
+
+log = logging.getLogger("sdv_mcp")
+
+def setup_logging():
+    """Configure logging to stderr (captured by MCP clients such as Claude Desktop)
+    and, unless disabled, to a log file. Returns the log file path (or None).
+
+    Env: SDV_LOG_LEVEL (default INFO), SDV_LOG_FILE (path; empty/"none" disables the
+    file handler; default <tempdir>/sdv-mcp.log). Never writes to stdout - that is the
+    stdio MCP protocol channel."""
+    if getattr(setup_logging, "_done", False):
+        return getattr(setup_logging, "_path", None)
+    level = getattr(logging, os.environ.get("SDV_LOG_LEVEL", "INFO").upper(), logging.INFO)
+    log.setLevel(level)
+    log.propagate = False
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] sdv-mcp: %(message)s")
+    sh = logging.StreamHandler(sys.stderr); sh.setFormatter(fmt); log.addHandler(sh)
+    path = os.environ.get("SDV_LOG_FILE")
+    if path is None:
+        path = os.path.join(tempfile.gettempdir(), "sdv-mcp.log")
+    elif path.strip().lower() in ("", "none", "off", "0"):
+        path = None
+    if path:
+        try:
+            fh = logging.FileHandler(path, encoding="utf-8"); fh.setFormatter(fmt)
+            log.addHandler(fh)
+        except OSError as e:
+            log.warning("could not open log file %s: %s", path, e); path = None
+    setup_logging._done = True; setup_logging._path = path
+    return path
+
+def _wrap_tool_for_logging(name, fn):
+    """Wrap a tool callable so any exception is logged with a full traceback before
+    it propagates. Without this, a raised tool surfaces to the client only as an
+    opaque output-schema error ('None is not of type object') with no server detail."""
+    if getattr(fn, "_sdv_logged", False):
+        return fn
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await fn(*args, **kwargs)
+            except Exception:
+                log.exception("tool '%s' raised (kwargs=%r)", name, kwargs)
+                raise
+    else:
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except Exception:
+                log.exception("tool '%s' raised (kwargs=%r)", name, kwargs)
+                raise
+    wrapper._sdv_logged = True
+    return wrapper
+
+def install_tool_logging():
+    """Attach the exception-logging wrapper to every registered tool."""
+    for name, tool in mcp._tool_manager._tools.items():
+        tool.fn = _wrap_tool_for_logging(name, tool.fn)
 
 mcp = FastMCP("sdv-mcp")
 
@@ -684,6 +744,7 @@ def _parse_args():
 def main():
     """Console entry point (see [project.scripts] in pyproject.toml)."""
     global DEFAULT_SAVE
+    _logpath = setup_logging()
     _args = _parse_args()
     if _args.save:
         DEFAULT_SAVE = _args.save
@@ -693,9 +754,13 @@ def main():
     if _disable or _enable:
         _removed, _unknown = apply_tool_policy(_disable, _enable)
         if _unknown:
-            print("[sdv-mcp] unknown tool name(s) ignored: " + ", ".join(_unknown), file=sys.stderr)
+            log.warning("unknown tool name(s) ignored: %s", ", ".join(_unknown))
         if _removed:
-            print(f"[sdv-mcp] disabled {len(_removed)} tool(s): " + ", ".join(_removed), file=sys.stderr)
+            log.info("disabled %d tool(s): %s", len(_removed), ", ".join(_removed))
+    install_tool_logging()
+    log.info("starting sdv-mcp | save=%r | tools=%d | log_file=%s",
+             DEFAULT_SAVE or "(none configured)", len(mcp._tool_manager._tools),
+             _logpath or "(stderr only)")
     mcp.run()
 
 if __name__ == "__main__":
