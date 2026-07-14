@@ -80,7 +80,7 @@ given a folder, the main save file is auto-located (ignores `_old` backups and
 Env-var config example (instead of the CLI flag):
 ```json
 "env": { "SDV_SAVE_DIR": "C:/Users/you/AppData/Roaming/StardewValley/Saves/FarmName_123456" }
-``
+```
 
 ## Disabling tools
 Any tool you consider cheating/unfair can be turned off so the model never sees it.
