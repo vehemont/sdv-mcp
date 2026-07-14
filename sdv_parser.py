@@ -127,6 +127,23 @@ def _t(el, tag, default=None):
     c = el.find(tag) if el is not None else None
     return c.text if c is not None and c.text is not None else default
 
+def farm_animals(root):
+    """All farm animals as unique <FarmAnimal> elements.
+
+    In 1.6 each animal house serialises its herd twice under `indoors` - once in
+    the legacy `animals` list and once in the new `Animals` dictionary - so a naive
+    `root.iter('FarmAnimal')` returns every animal twice. Deduplicate on `myID`
+    (falling back to object identity if an animal has no id)."""
+    seen = set(); out = []
+    for a in root.iter('FarmAnimal'):
+        key = a.findtext('myID')
+        if key is None:
+            key = id(a)
+        if key in seen:
+            continue
+        seen.add(key); out.append(a)
+    return out
+
 def _players(root):
     ps = []
     host = root.find('player')
@@ -340,7 +357,7 @@ def processing(root):
                             "listed above.") if modded else None}
 
 def feed(root):
-    animals = Counter(a.find('type').text for a in root.iter('FarmAnimal') if a.find('type') is not None)
+    animals = Counter(a.find('type').text for a in farm_animals(root) if a.find('type') is not None)
     n = sum(animals.values())
     silo = sum(int(e.text) for e in root.iter('piecesOfHay'))
     fiber = _combined_inventory(root).get('Fiber',0)
@@ -932,7 +949,7 @@ def daily_briefing(root):
         if (s,dd) in FESTIVALS:
             fests.append({'in_days':d,'date':f"{s.title()} {dd}",'festival':FESTIVALS[(s,dd)]})
     mr = machines_ready(root); cr = crops_ready(root)
-    animals = list(root.iter('FarmAnimal'))
+    animals = farm_animals(root)
     unpet = sum(1 for a in animals if a.find('wasPet') is not None and a.find('wasPet').text=='false')
     return {'date':f"{season.title()} {day}, Year {ov['date']['year']}",
             'daily_luck':{'value':luck,'assessment':luck_txt},

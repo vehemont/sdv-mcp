@@ -403,7 +403,7 @@ def animal_product_quality(root=None, friendship=None, mood=None, animal_type=No
             return None
     has_coop = _has_profession(root,'Coopmaster'); has_shep = _has_profession(root,'Shepherd')
     out = []
-    for a in root.iter('FarmAnimal'):
+    for a in P.farm_animals(root):
         t = a.find('type'); fr = a.find('friendshipTowardFarmer'); md = a.find('happiness')
         nm = a.find('name')
         atype = t.text if t is not None else None
