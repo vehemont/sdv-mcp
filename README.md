@@ -2,7 +2,7 @@
 
 I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. This is a read-only MCP server that reads a Stardew Valley save and answers questions about it. It includes 40 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
 
-> This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Stardew Valley makes a one-night-before backup automatically, denoted by the sufix _old in the filename.
+> 🚨 This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Stardew Valley makes a one-night-before backup automatically, denoted by the sufix _old in the filename.
 
 ## Requirements
 - Python 3.10+
@@ -154,32 +154,6 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `wiki_page` | A page (or one section) as clean text — to verify facts / pull context |
 | `wiki_infobox` | A page's infobox as structured fields (price/season/location) |
 | `villager_schedule` | A villager's wiki schedule + your save's date/weather/hearts |
-
-## How the model reads the output
-Inputs have per-parameter descriptions and enums for constrained args (`quality` = normal/silver/gold/iridium, `artisan` = auto/true/false, etc.). The 11 calculator tools also declare an **output schema** (field names + types) so the shape is known up front. MCP output schemas can't carry field descriptions, so every result also has a `note` with units/formulas/caveats — read it. Unit conventions in key names: `*_pct` = percent, `*_gold` = gold, `*_days`/`days_*` = days, `*_xp` = XP.
-
-## Mods
-Item classification (keg fruit/veg) is data-driven from each item's own `<category>` in the save, so vanilla content of any version is covered automatically. Modded items get detected (namespaced ids with a dot) and **excluded from vanilla-reference totals but reported by name/qty** — see `mods` and `processing.modded_items_excluded`. Bundle structure is read from the save, so overhaul/remix CCs parse; modded item *names* the parser can't resolve show as `#id`. Full modded-name resolution (loading `Data/Objects` + the `Mods` folder) is intentionally not built yet.
-
-## Verified, not guessed
-The calculator constants were checked against the wiki, not pulled from memory: crop quality formula + multipliers (iridium 2x / gold 1.5x / silver 1.25x), farming + fishing XP formulas, Tiller +10% / Rancher +20% / Artisan +40%, keg/jar multipliers, sprinkler recipes, fish-pond reproduction, Perfection weights, animal-product prices. Reference tables (crops, prices, fish difficulty) live at the top of `sdv_calc.py` and `sdv_parser.py` — extend them, or cross-check anything with the `wiki_*` tools.
-
-## Releasing
-CI publishes to PyPI on a version tag via **Trusted Publishing** (OIDC - no tokens).
-One-time setup on PyPI: your account -> Publishing -> add a *pending* publisher:
-- PyPI project: `sdv-mcp`  Owner: `vehemont`  Repo: `sdv-mcp`
-- Workflow: `publish.yml`  Environment: `pypi`
-
-Then, per release:
-```bash
-# bump version in pyproject.toml, commit, then:
-git tag v0.1.0 && git push --tags
-```
-`.github/workflows/publish.yml` builds, smoke-tests the wheel, and publishes.
-
-First release without waiting on CI (uses your PyPI token):
-```bash
-uv build && uv publish   # prompts for token, or set UV_PUBLISH_TOKEN
 ```
 
 ## Packaging
