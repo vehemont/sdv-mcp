@@ -6,11 +6,16 @@ I recently got into the game with my wife and noticed I was spending more time r
 > This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Then once you feel comfortable, you can point it at your real save to receive the save-per-night updates. 
 
 
-Example questions:
-> "What is my best money maker that I should be utilizing?"
-> "What should I focus on next?"
-> "Can anything be completed with what I have?"
+Example questions that utilize the state of your save, tailoring responses to you depending on the season, day, location, and what you already have:
+> "What is my best money maker that I should be utilizing?"  
 
+> "What should I focus on next?"  
+
+> "Can anything be completed with what I have?"  
+
+> "Best way to get coal?"
+
+> "Give me a priority step-by-step list on completing my fishing bundle."
 
 ## Requirements
 - Python 3.10+
