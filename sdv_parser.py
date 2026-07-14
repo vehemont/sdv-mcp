@@ -1015,7 +1015,10 @@ def daily_briefing(root):
     open_quests = []
     for p in qd['players']:
         for q in p['quests']:
-            if q.get('completed') or not q.get('accepted'):
+            # A quest sitting in the log is active/shown in the in-game Journal. The
+            # `accepted` flag is only set for Help-Wanted board quests, so story quests
+            # have accepted=false while still active - only `completed` means done.
+            if q.get('completed'):
                 continue
             item = {'player':p['player'],'title':q.get('title'),'type':q.get('type'),
                     'objective':q.get('objective'),'reward_gold':q.get('reward_gold'),
@@ -1025,6 +1028,8 @@ def daily_briefing(root):
                 item['on_hand'] = q.get('on_hand')
                 item['completable_now'] = q.get('completable_now')
             open_quests.append(item)
+    # Surface the quests you can hand in right now first.
+    open_quests.sort(key=lambda q: not q.get('completable_now', False))
     active_orders = [{'key':o['key'],'requester':o['requester'],
                       'due_day_of_year':o['due_day_of_year'],
                       'objectives':o['objectives'],'reward_gold':o['reward_gold']}
