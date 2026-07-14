@@ -89,6 +89,40 @@ def install_tool_logging():
     for name, tool in mcp._tool_manager._tools.items():
         tool.fn = _wrap_tool_for_logging(name, tool.fn)
 
+def _make_property_nullable(prop):
+    """Allow JSON null for one output-schema property in place."""
+    if not isinstance(prop, dict):
+        return
+    if "type" in prop:
+        t = prop["type"]
+        if isinstance(t, str) and t != "null":
+            prop["type"] = [t, "null"]
+        elif isinstance(t, list) and "null" not in t:
+            prop["type"] = [*t, "null"]
+    elif "anyOf" in prop or "oneOf" in prop:
+        key = "anyOf" if "anyOf" in prop else "oneOf"
+        opts = prop[key]
+        if not any(isinstance(s, dict) and s.get("type") == "null" for s in opts):
+            opts.append({"type": "null"})
+    elif "$ref" in prop:
+        prop["anyOf"] = [{"$ref": prop.pop("$ref")}, {"type": "null"}]
+
+def relax_output_schemas():
+    """Mark every field of every tool's OUTPUT schema as nullable.
+
+    FastMCP builds a Pydantic model from each tool's TypedDict return type in which
+    all fields default to None, then serialises ALL of them - including unset ones -
+    as JSON null. Tools legitimately return a sparse subset of their declared fields,
+    so strict clients (e.g. Claude Desktop) that validate structured output reject
+    those nulls ('None is not of type object/string'). Advertising the fields as
+    nullable is accurate (they are optional) and lets that null pass validation."""
+    for tool in mcp._tool_manager._tools.values():
+        schema = tool.output_schema
+        if not schema:
+            continue
+        for prop in schema.get("properties", {}).values():
+            _make_property_nullable(prop)
+
 mcp = FastMCP("sdv-mcp")
 
 # ---- reusable annotated parameter types -----------------------------------
@@ -758,6 +792,7 @@ def main():
         if _removed:
             log.info("disabled %d tool(s): %s", len(_removed), ", ".join(_removed))
     install_tool_logging()
+    relax_output_schemas()
     log.info("starting sdv-mcp | save=%r | tools=%d | log_file=%s",
              DEFAULT_SAVE or "(none configured)", len(mcp._tool_manager._tools),
              _logpath or "(stderr only)")
