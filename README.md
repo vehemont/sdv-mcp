@@ -164,7 +164,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `animal_product_value` | Raw (Rancher) vs processed (Artisan) value of milk/egg/wool |
 | `list_buffs` | Food buffs that raise a skill level (Farmer's Lunch +3, Trout Soup +1) |
 
-### Wiki verification (live)
+### Wiki verification
 | Tool | What |
 |------|------|
 | `wiki_search` | Search the Stardew Valley Wiki (titles + snippets) |
@@ -172,7 +172,6 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `wiki_infobox` | A page's infobox as structured fields (price/season/location) |
 | `how_to_obtain` | Every way to get an item (drops, shops, trades, gifting) — the wiki lead summary + infobox source. Plan how to get a quest/bundle item |
 | `villager_schedule` | A villager's wiki schedule + your save's date/weather/hearts |
-```
 
 ## Packaging
 `pyproject.toml` makes this a real package: `uv build` produces a wheel, and the `sdv-mcp` console script maps to `sdv_mcp_server:main`. Publish with `uv publish`.
@@ -184,7 +183,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 - `sdv_mcp_server.py` — the 47 tools
 
 ## Known limits
-- Vanilla + whatever this wiki documents. Modded content lives on separate wikis.
+- Vanilla + whatever the wiki documents only. Modded content lives on separate wikis.
 - `missing_recipes` lists recipes you've *learned* but not made; recipes not yet learned show only as a count (they aren't in the save). `shipping_tracker` lists what you've shipped by name — a by-name "still to ship" list isn't modelled (the save only stores what shipped), so its remaining count is approximate vs the 154-item set.
 - `quests`: `completable_now` covers item delivery/harvest/resource quests (you still hand the item in); monster/fishing/socialize quests report progress counters instead. Special-order item objectives aren't fully modelled. Item ids missing from the local name table show as `#id` — use `research=True` or the wiki tools to identify them.
 at- Wiki tools need outbound network. The save tools don't.
