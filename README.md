@@ -30,14 +30,14 @@ Keep the four modules in the same folder — the server imports the others from 
 ### Recommended: uvx
 Needs [uv](https://docs.astral.sh/uv/), pass a save folder/directory with `--save-dir` or just `--save` with the actual save file, which is just the same name as the folder/directory:
 
-`--save-dir` example on Windows with Claude Desktop:
+`--save-dir` example on Windows with Claude Desktop and proper JSON escapes:
 ```json
 {
   "mcpServers": {
     "sdv-mcp": {
       "command": "uvx",
       "args": [
-        "sdv-mcp",
+        "sdv-mcp", // use "sdv-mcp@latest" to always pull the latest version
         "--save-dir", "C:\\Users\\you\\AppData\\Roaming\\StardewValley\\Saves\\FarmName_437005740"
       ]
     }
