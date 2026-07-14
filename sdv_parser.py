@@ -54,6 +54,14 @@ QUEST_TYPE = {1:'Basic', 2:'Crafting', 3:'ItemDelivery', 4:'Monster', 5:'Sociali
 # Quest types whose completion is "hand over / possess the requested item", so
 # holding it now means it can be turned in immediately.
 QUEST_ITEM_TYPES = {3, 9, 10}  # ItemDelivery, ItemHarvest, ResourceCollection
+# Crafting-quest verification: qualified craft id -> (item name, {ingredient: qty}).
+# Vanilla recipes verified vs the wiki. Ingredients are matched by NAME against
+# on-hand inventory. Only include recipes we're sure of - unknown craft targets are
+# reported unverified (with a wiki pointer) rather than guessed. "Forging Ahead"
+# (craft a Furnace) is the one crafting quest in the vanilla story.
+CRAFT_RECIPES = {
+ '(BC)13': ('Furnace', {'Copper Ore': 20, 'Stone': 25}),
+}
 
 MUSEUM_TOTAL = 95
 MUSEUM_MILESTONES = {11:'Ancient Seeds recipe',40:'Reward',50:'Reward',60:'Rusty Key (Sewers)',
@@ -1027,9 +1035,17 @@ def daily_briefing(root):
                 item['need'] = f"{q.get('required_count',1)}x {q['required_item']}"
                 item['on_hand'] = q.get('on_hand')
                 item['completable_now'] = q.get('completable_now')
+            if q.get('craft_item'):
+                item['craft_item'] = q['craft_item']
+                if 'crafting_materials' in q:
+                    item['materials'] = q['crafting_materials']
+                    item['completable_now'] = q.get('have_materials')
+                elif q.get('materials_note'):
+                    item['materials_note'] = q['materials_note']
             open_quests.append(item)
-    # Surface the quests you can hand in right now first.
+    # Surface the quests you can act on right now first.
     open_quests.sort(key=lambda q: not q.get('completable_now', False))
+    ready_now = sum(1 for q in open_quests if q.get('completable_now'))
     active_orders = [{'key':o['key'],'requester':o['requester'],
                       'due_day_of_year':o['due_day_of_year'],
                       'objectives':o['objectives'],'reward_gold':o['reward_gold']}
@@ -1039,6 +1055,8 @@ def daily_briefing(root):
             'birthdays_today':today_bd,
             'upcoming_birthdays':upcoming_b,
             'open_quests':open_quests,
+            'open_quest_count':len(open_quests),
+            'quests_completable_now':ready_now,
             'active_special_orders':active_orders,
             'festivals_next_7_days':fests,
             'next_goals':next_goals(root),
@@ -1232,6 +1250,19 @@ def _quest_fields(q, by_name, by_id):
         d['required_item'] = name or f'#{iid}'
         d['on_hand'] = on_hand
         d['completable_now'] = on_hand >= need
+    # crafting quests: verify the recipe's materials against inventory (by name)
+    if qt_i == 2:
+        rec = CRAFT_RECIPES.get((g('indexToCraft') or '').strip())
+        if rec:
+            cname, ingredients = rec
+            d['craft_item'] = cname
+            mats = [{'item': ing, 'need': n, 'on_hand': by_name.get(ing, 0)}
+                    for ing, n in ingredients.items()]
+            d['crafting_materials'] = mats
+            d['have_materials'] = all(m['on_hand'] >= m['need'] for m in mats)
+        else:
+            d['materials_note'] = ("recipe not in the local table - use wiki_page(item) "
+                                   "for ingredients, then check them against inventory")
     return d
 
 XSI_TYPE = '{http://www.w3.org/2001/XMLSchema-instance}type'
