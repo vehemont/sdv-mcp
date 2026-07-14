@@ -130,6 +130,23 @@ def _extract_section(wt, name):
             out.append(ln)
     return "\n".join(out).strip() if grab else None
 
+def summary(title, max_chars=700):
+    """The lead section (everything before the first heading) as cleaned plain
+    text. For an item page this is the 'how to obtain / what it's used for'
+    overview - e.g. every acquisition method (drops, shop purchases, trades,
+    gifting), which is what you want when planning how to get a quest item."""
+    d = _get({"action": "parse", "page": title, "prop": "wikitext", "redirects": "1"})
+    if "error" in d:
+        return {"title": title, "error": d["error"].get("info", "not found")}
+    p = d["parse"]; wt = p["wikitext"]
+    lead = re.split(r"\n==", wt, 1)[0]                       # text before first section
+    lead = re.sub(r"\{\{Infobox.*?\n\}\}", "", lead, flags=re.S)  # drop the infobox block
+    text = clean_wikitext(lead)
+    return {"title": p["title"], "summary": text[:max_chars],
+            "truncated": len(text) > max_chars,
+            "url": "https://stardewvalleywiki.com/" + p["title"].replace(" ", "_"),
+            "source": "Stardew Valley Wiki (CC BY-NC-SA)"}
+
 def infobox(title):
     """Parse the page's first infobox-style template into key/value fields
     (e.g. sell price, season, location) - the best surface for verification."""

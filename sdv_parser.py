@@ -7,7 +7,7 @@ caller (CLI or MCP server) can present facts and make its own recommendations.
 The parser NEVER writes to the save.
 """
 from __future__ import annotations
-import os, glob, xml.etree.ElementTree as ET
+import os, glob, re, xml.etree.ElementTree as ET
 from collections import Counter
 
 XSI = '{http://www.w3.org/2001/XMLSchema-instance}type'
@@ -47,6 +47,14 @@ GOALS = [
  ("Serpents",250,{'Serpent','Royal Serpent'},"-"),
  ("Magma Sprites",150,{'Magma Sprite','Magma Sparker'},"-"),
 ]
+# Quest.questType int -> label (from StardewValley.Quests.Quest constants).
+QUEST_TYPE = {1:'Basic', 2:'Crafting', 3:'ItemDelivery', 4:'Monster', 5:'Socialize',
+              6:'Location', 7:'Fishing', 8:'Building', 9:'ItemHarvest',
+              10:'ResourceCollection', 11:'Weeding'}
+# Quest types whose completion is "hand over / possess the requested item", so
+# holding it now means it can be turned in immediately.
+QUEST_ITEM_TYPES = {3, 9, 10}  # ItemDelivery, ItemHarvest, ResourceCollection
+
 MUSEUM_TOTAL = 95
 MUSEUM_MILESTONES = {11:'Ancient Seeds recipe',40:'Reward',50:'Reward',60:'Rusty Key (Sewers)',
  70:'Reward',80:'Reward',90:'Reward',95:'Complete (Stardrop)'}
@@ -161,6 +169,19 @@ def _items_in(el):
         st = it.find('stack')
         c[nm.text] += int(st.text) if st is not None and st.text else 1
     return c
+
+def _dict_pairs(el):
+    """Yield (key, value) text pairs for a serialised C# dictionary, i.e.
+    <item><key>..</key><value>..</value></item>. Handles keys/values that wrap
+    the scalar in <string>/<int> (uses itertext)."""
+    if el is None:
+        return
+    for it in el.findall('item'):
+        k = it.find('key'); v = it.find('value')
+        ks = "".join(k.itertext()).strip() if k is not None else None
+        vs = "".join(v.itertext()).strip() if v is not None else None
+        if ks:
+            yield ks, vs
 
 def _all_chest_contents(root):
     total = Counter(); n = 0
@@ -396,7 +417,7 @@ DATABLE = {'Abigail','Penny','Leah','Maru','Haley','Emily',
 PERFECTION_SPEC = [
  ('Produce & Forage Shipped', 154, 15), ('Obelisks on Farm', 4, 4),
  ('Golden Clock on Farm', 1, 10), ('Monster Slayer Hero', 12, 10),
- ('Great Friends', 34, 11), ('Farmer Skills at 10', 5, 5),
+ ('Great Friends', 34, 11), ('Farmer Level', 25, 5),
  ('Stardrops Found', 7, 10), ('Cooking Recipes Made', 81, 10),
  ('Crafting Recipes Made', 149, 10), ('Fish Caught', 72, 10),
  ('Golden Walnuts Found', 130, 5),
@@ -412,9 +433,15 @@ def perfection(root):
     cr = host.find('craftingRecipes')
     crafting = sum(1 for it in cr.findall('item')
                    if it.find('value/int') is not None and int(it.find('value/int').text) > 0) if cr is not None else 0
-    lv = [int(_t(host, s+'Level', 0)) for s in ['farming','fishing','foraging','mining','combat']]
-    skills10 = sum(1 for x in lv if x >= 10)
-    ms = int(_t(host, 'maxStamina', 270)); stardrops = max(0, min(7, (ms-270)//34))
+    # Farmer Level = Game1.player.Level = (sum of the 6 skill levels)//2, max 25
+    # (luck is 0 in vanilla, so effectively the 5 skills). NOT a count of maxed skills.
+    def player_level(p):
+        s = sum(int(_t(p, sk+'Level', 0)) for sk in
+                ['farming','fishing','foraging','mining','combat','luck'])
+        return min(25, s // 2)
+    def player_stardrops(p):
+        ms = int(_t(p, 'maxStamina', 270)); return max(0, min(7, (ms-270)//34))
+    farmer_level = player_level(host); stardrops = player_stardrops(host)
     gw = next(iter(root.iter('goldenWalnutsFound')), None)
     walnuts = int(gw.text) if gw is not None and gw.text else 0
     blds = Counter(x.find('buildingType').text for x in root.iter('Building')
@@ -426,7 +453,7 @@ def perfection(root):
     great = sum(1 for r in fr if r['hearts'] >= (8 if r['villager'] in DATABLE else 10))
     haves = {'Produce & Forage Shipped':shipped,'Obelisks on Farm':obelisks,
              'Golden Clock on Farm':gold_clock,'Monster Slayer Hero':monsters,
-             'Great Friends':great,'Farmer Skills at 10':skills10,'Stardrops Found':stardrops,
+             'Great Friends':great,'Farmer Level':farmer_level,'Stardrops Found':stardrops,
              'Cooking Recipes Made':cooking,'Crafting Recipes Made':crafting,
              'Fish Caught':fish,'Golden Walnuts Found':walnuts}
     total = 0.0; breakdown = []
@@ -436,11 +463,96 @@ def perfection(root):
         breakdown.append({'category':cat,'have':have,'of':tot,'weight_pct':wt,
                           'earned_pct':round(earned,2),'complete':have>=tot,
                           'remaining':max(0,tot-have)})
-    return {'perfection_pct':round(total,1),'breakdown':breakdown,
-            'note':'Weighted per the in-game Perfection Tracker (verified vs wiki). Cooking/Crafting '
-                   '= recipes MADE (not just known). Shipped = distinct basicShipped vs 154 (may '
-                   'differ slightly from the Farm & Forage collection set). Great Friends: datable '
-                   'max 8 hearts, others 10.'}
+    # Per-player context: Farmer Level, Stardrops and Great Friends are per-player,
+    # so in co-op each farmer sees a different number in the Walnut Room. The main
+    # % above is the HOST's (the canonical save owner).
+    per_player = []
+    for p in _players(root):
+        prel = friendships(root).get(_t(p,'name'), {}).get('relationships', [])
+        pg = sum(1 for r in prel if r['hearts'] >= (8 if r['villager'] in DATABLE else 10))
+        per_player.append({'player':_t(p,'name'),'farmer_level':player_level(p),
+                           'stardrops':player_stardrops(p),'great_friends':pg})
+    return {'perfection_pct':round(total,1),'breakdown':breakdown,'per_player':per_player,
+            'note':'Weighted per the in-game Perfection Tracker (verified vs wiki). The % is the '
+                   "HOST's. Farmer Level = player.Level = (sum of the 5 skill levels)//2, max 25 "
+                   '(NOT a count of maxed skills). Cooking/Crafting = recipes MADE (not just known). '
+                   'Shipped = distinct basicShipped vs 154 (may include items outside the Farm & '
+                   'Forage collection set). Great Friends: datable max 8 hearts, others 10. In co-op, '
+                   'Farmer Level/Stardrops/Great Friends differ per player - see per_player.'}
+
+def missing_recipes(root):
+    """Per player: cooking + crafting recipes LEARNED but not yet made (actionable
+    now), with known/made counts vs the perfection totals. Recipes not yet learned
+    aren't listed by name (they're not in the save) but show up as the gap between
+    'made' and 'perfection_total'."""
+    def _int(v): return int(v) if v and v.lstrip('-').isdigit() else 0
+    out = []
+    for p in _players(root):
+        cook_known = {k: _int(v) for k, v in _dict_pairs(p.find('cookingRecipes'))}
+        cooked = {k for k, v in _dict_pairs(p.find('recipesCooked')) if _int(v) > 0}
+        craft_known = {k: _int(v) for k, v in _dict_pairs(p.find('craftingRecipes'))}
+        crafted = {k for k, v in craft_known.items() if v > 0}
+        # Wedding Ring is craftable but NOT required for Perfection - don't flag it.
+        craft_todo = sorted(set(craft_known) - crafted - {'Wedding Ring'})
+        out.append({
+            'player': _t(p, 'name'),
+            'cooking': {'known': len(cook_known), 'made': len(cooked), 'perfection_total': 81,
+                        'known_not_yet_made': sorted(set(cook_known) - cooked),
+                        'not_yet_learned_est': max(0, 81 - len(cook_known))},
+            'crafting': {'known': len(craft_known), 'made': len(crafted), 'perfection_total': 149,
+                         'known_not_yet_made': craft_todo,
+                         'not_yet_learned_est': max(0, 149 - len(craft_known))},
+        })
+    return {'players': out,
+            'note': "known_not_yet_made = recipes you've LEARNED but not cooked/crafted yet - make "
+                    "these to progress. not_yet_learned_est = perfection_total minus recipes known "
+                    "(you must still find/buy/earn these; use wiki_page for a recipe's unlock). "
+                    "Cooking needs a kitchen (house upgrade 1)."}
+
+def shipping_tracker(root):
+    """What the host has shipped (from basicShipped), resolved to names with
+    lifetime quantities, plus distinct count vs the 154-item perfection target."""
+    host = root.find('player')
+    shipped = {}
+    for k, v in _dict_pairs(host.find('basicShipped')):
+        iid = _norm_id(k)
+        shipped[iid] = int(v) if v and v.lstrip('-').isdigit() else 0
+    named = {}
+    unmapped = []
+    for iid, qty in shipped.items():
+        nm = ITEM.get(str(iid))
+        if nm is None:
+            unmapped.append(iid)
+        named[nm or f'#{iid}'] = qty
+    return {'distinct_shipped': len(shipped), 'perfection_target': 154,
+            'remaining_estimate': max(0, 154 - len(shipped)),
+            'shipped': dict(sorted(named.items(), key=lambda kv: -kv[1])),
+            'unmapped_ids': unmapped,
+            'note': "Full Shipment / perfection needs one of every item in the Items Shipped "
+                    "(Farm & Forage) collection (154). distinct_shipped counts every distinct item "
+                    "shipped, which may include items outside that 154-set, so remaining_estimate is "
+                    "approximate. A by-name 'still to ship' list isn't modelled (the save only stores "
+                    "what HAS shipped) - see the wiki 'Shipping' collection for the full checklist. "
+                    "unmapped_ids = shipped item ids not in the local name table (often modded/1.6)."}
+
+def golden_walnuts(root):
+    """Golden Walnut progress for Ginger Island: total found vs 130, unspent
+    balance, whether the island is unlocked, and repeatable-source progress."""
+    def _first(tag):
+        e = next(iter(root.iter(tag)), None)
+        return int(e.text) if e is not None and e.text and e.text.lstrip('-').isdigit() else 0
+    found = _first('goldenWalnutsFound'); current = _first('goldenWalnuts')
+    u = unlocks(root); island = u['areas']['ginger_island']['unlocked']
+    lnd = next(iter(root.iter('limitedNutDrops')), None)
+    limited = {k: (int(v) if v and v.lstrip('-').isdigit() else 0) for k, v in _dict_pairs(lnd)}
+    return {'total_found': found, 'total_possible': 130, 'remaining': max(0, 130 - found),
+            'currently_unspent': current, 'ginger_island_unlocked': island,
+            'repeatable_source_progress': limited,
+            'note': "130 walnuts total; 100 are needed to enter Qi's Walnut Room (where the "
+                    "Perfection Tracker lives). Individual one-time walnut locations aren't "
+                    "enumerated in the save - see the wiki page 'Golden Walnut' (or wiki_page) for "
+                    "the full location checklist. repeatable_source_progress tracks the capped "
+                    "repeatable sources (digging/fishing/bushes/etc). Requires the island unlocked."}
 
 def net_worth(root):
     """Gold + sellable value of everything held (backpacks + chests + machine outputs).
@@ -507,6 +619,13 @@ WALLET_FLAGS = {'Rusty Key':'hasRustyKey','Skull Key':'hasSkullKey','Club Card':
  'Special Charm':'hasSpecialCharm','Dark Talisman':'hasDarkTalisman','Magic Ink':'hasMagicInk',
  'Town Key':'hasTownKey','Understand Dwarves':'canUnderstandDwarves',
  'Magnifying Glass':'hasMagnifyingGlass','Bear Knowledge':'hasUsedDwarvishTranslationGuide'}
+# Stardew 1.6 replaced the wallet with the "Special Items & Powers" tab: the old
+# player <has*> booleans are now serialised xsi:nil and the real state lives in
+# mailReceived. Map each wallet item to its 1.6 mail flag (checked in addition to
+# the legacy boolean so both 1.5 and 1.6 saves report correctly).
+WALLET_MAIL = {'Rusty Key':'HasRustyKey','Skull Key':'HasSkullKey','Club Card':'HasClubCard',
+ 'Special Charm':'HasSpecialCharm','Dark Talisman':'HasDarkTalisman','Magic Ink':'HasMagicInk',
+ 'Town Key':'HasTownKey','Magnifying Glass':'HasMagnifyingGlass'}
 
 # Full museum donation set (95): 53 minerals + 42 artifacts. IDs are object ids.
 MUSEUM_MINERALS = {60:'Emerald',62:'Aquamarine',64:'Ruby',66:'Amethyst',68:'Topaz',70:'Jade',
@@ -565,12 +684,72 @@ def tools(root):
     return out
 
 def wallet(root):
+    """Special keys/items owned. Reads the 1.6 mailReceived flags AND the legacy
+    player booleans, so it's correct on both 1.5 and 1.6 saves (1.6 stores these
+    as mail flags; the old <has*> booleans are xsi:nil)."""
     host = root.find('player')
+    mail = _mail(root)
     out = {}
     for label, tag in WALLET_FLAGS.items():
         e = host.find(tag)
-        out[label] = (e is not None and e.text == 'true')
+        legacy = (e is not None and e.text == 'true')
+        mflag = WALLET_MAIL.get(label)
+        out[label] = bool(legacy or (mflag in mail if mflag else False))
     return out
+
+def unlocks(root):
+    """Which gated locations/vendors are open in THIS save, derived from mail
+    flags + keys. Lets a caller filter item-acquisition advice to what's actually
+    reachable (e.g. don't suggest the Desert Trader if the bus isn't repaired)."""
+    mail = _mail(root)
+    host = root.find('player')
+    has = lambda *flags: any(f in mail for f in flags)
+    deepest = int(_t(host, 'deepestMineLevel', 0) or 0)
+    joja = 'JojaMember' in mail
+    desert = has('ccVault', 'jojaVault')
+    has_rusty = has('HasRustyKey') or (host.find('hasRustyKey') is not None and _t(host,'hasRustyKey') == 'true')
+    has_skull = has('HasSkullKey') or (host.find('hasSkullKey') is not None and _t(host,'hasSkullKey') == 'true')
+    has_club = has('HasClubCard') or (host.find('hasClubCard') is not None and _t(host,'hasClubCard') == 'true')
+    island = any(m.startswith('Island') for m in mail) or has('seenBoatJourney', 'willyBackRoomInvitation')
+
+    def gate(unlocked, gates, requires):
+        d = {'unlocked': bool(unlocked), 'gates': gates}
+        if not unlocked:
+            d['requires'] = requires
+        return d
+
+    areas = {
+        'community_center_route': 'Joja' if joja else 'Community Center',
+        'desert': gate(desert, 'Calico Desert: Sandy\'s Oasis shop, the Desert Trader, Skull Cavern entrance',
+                       'Repair the bus: complete the Community Center Vault bundles (ccVault) or buy the Bus on the Joja Community Development Form (jojaVault).'),
+        'desert_trader': gate(desert, 'Desert Trader barter stall (in the desert)',
+                              'Unlock the desert first (repair the bus via the Vault bundles or Joja Bus).'),
+        'sewers': gate(has_rusty, "Krobus's shop and the Sewers (Mutant Bug Lair via Dark Talisman)",
+                       'Donate 60 items to the Museum to receive the Rusty Key from Gunther.'),
+        'skull_cavern': gate(desert and has_skull, 'Skull Cavern (Iridium, Prismatic Shards, etc.)',
+                             'Unlock the desert AND reach the bottom of the Mines (level 120) for the Skull Key.'),
+        'casino': gate(desert and has_club, 'Casino (Qi coins shop, behind Sandy\'s shop)',
+                       'Complete Mr. Qi\'s "The Mysterious Qi" quest for the Club Card (and unlock the desert).'),
+        'quarry': gate(has('ccCraftsRoom', 'jojaCraftsRoom'), 'Quarry (ore/geode nodes) via the repaired bridge',
+                       'Complete the Crafts Room bundles (or buy the Bridge on the Joja form).'),
+        'greenhouse': gate(has('ccPantry', 'jojaPantry'), 'Greenhouse (year-round crops)',
+                           'Complete the Pantry bundles (or buy the Greenhouse on the Joja form).'),
+        'minecarts': gate(has('ccBoilerRoom', 'jojaBoilerRoom'), 'Minecart fast-travel network',
+                          'Complete the Boiler Room bundles (or buy Minecarts on the Joja form).'),
+        'movie_theater': gate(has('ccMovieTheater', 'ccMovieTheaterJoja', 'abandonedJojaMartAccessible'),
+                              'Movie Theater',
+                              'Complete the Community Center (or, on Joja, finish the Joja Community Development projects).'),
+        'adventurers_guild': gate('guildMember' in mail, "Marlon's Adventurer's Guild shop + eradication-goal rewards",
+                                   'Kill 10 monsters (or reach Mines level 5) to be invited.'),
+        'ginger_island': gate(island, 'Ginger Island: Island Trader, Volcano Dungeon, Prof. Snail, Qi walnut room',
+                              "Repair Willy's boat in his back room (200 Hardwood, 5 Iridium Bars, 5 Battery Packs)."),
+    }
+    return {'deepest_mine_level': deepest,
+            'keys': {'Rusty Key': has_rusty, 'Skull Key': has_skull, 'Club Card': has_club},
+            'areas': areas,
+            'note': "unlocked=true means the location/vendor is reachable in this save. When advising "
+                    "how to obtain an item, drop or defer any source whose area is locked and surface "
+                    "its `requires` instead. Ginger Island detection is best-effort from mail flags."}
 
 def can_complete_now(root):
     """Which incomplete CC bundles you could finish from items currently held.
@@ -878,3 +1057,178 @@ def find_item(root, name, fuzzy=True):
     return {'query':name,'total_found':total,'places':len(hits),'results':hits,
             'note':'Searches player backpacks, chests, and machine outputs. fuzzy=substring match. '
                    'tile is (X,Y) on the named map.'}
+
+# ============================== quests ====================================
+def _norm_id(s):
+    """Strip a 1.6 qualified item-id prefix like '(O)' -> bare id; return None for
+    empty. Item ids may appear qualified in quests but unqualified on stored items,
+    so we normalise both sides before comparing."""
+    if s is None: return None
+    s = s.strip()
+    m = re.match(r'^\([A-Za-z]+\)(.+)$', s)
+    return m.group(1) if m else (s or None)
+
+def _on_hand_index(root):
+    """Aggregate everything currently held - all player backpacks + every chest -
+    into (by_name, by_id) Counters so a quest's requested item can be checked
+    whether it's referenced by name or by item id."""
+    by_name = Counter(); by_id = Counter()
+    def add(it):
+        nm = it.find('name')
+        st = it.find('stack'); qty = int(st.text) if st is not None and st.text else 1
+        if nm is not None and nm.text: by_name[nm.text] += qty
+        idel = it.find('itemId')
+        if idel is None: idel = it.find('parentSheetIndex')
+        bid = _norm_id(idel.text) if idel is not None and idel.text else None
+        if bid: by_id[bid] += qty
+    for p in _players(root):
+        items = p.find('items')
+        if items is not None:
+            for it in items.findall('Item'): add(it)
+    for _, c in _iter_chests(root):
+        items = c.find('items')
+        if items is not None:
+            for it in items.findall('Item'): add(it)
+    return by_name, by_id
+
+def _quest_fields(q, by_name, by_id):
+    """Flatten a <Quest> element into a dict: common fields + type-specific
+    requirement, plus an on-hand completability check for item-based quests."""
+    g = lambda tag: _t(q, tag)
+    qt = g('questType')
+    qt_i = int(qt) if qt and qt.lstrip('-').isdigit() else None
+    reward_desc = g('rewardDescription')
+    if reward_desc in (None, '', '-1'): reward_desc = None
+    d = {
+        'title': g('questTitle') or g('_questTitle'),
+        'description': g('_questDescription'),
+        'objective': g('_currentObjective') or None,
+        'type': QUEST_TYPE.get(qt_i, qt),
+        'reward_gold': max(0, int(g('moneyReward') or 0)),
+        'reward_description': reward_desc,
+        'accepted': g('accepted') == 'true',
+        'completed': g('completed') == 'true',
+        'daily_quest': g('dailyQuest') == 'true',
+        'days_left': int(g('daysLeft') or 0),
+    }
+    # type-specific requirement fields (best-effort; only added when present)
+    deliver_to = g('target')
+    if deliver_to: d['deliver_to'] = deliver_to
+    if qt_i == 4:  # SlayMonsterQuest
+        d['monster'] = g('monsterName')
+        d['kills_required'] = int(g('numberToKill') or 0)
+        d['kills_done'] = int(g('numberKilled') or 0)
+    elif qt_i == 7:  # FishingQuest
+        d['required_item_id'] = _norm_id(g('whichFish'))
+        d['required_count'] = int(g('numberToFish') or 1)
+        d['progress'] = int(g('numberFished') or 0)
+    elif qt_i == 5:  # SocializeQuest
+        d['greetings_required'] = int(g('total') or 0)
+    elif qt_i == 6:  # GoSomewhereQuest
+        d['go_to'] = g('whereToGo')
+    else:
+        # crafting / item-delivery / harvest / resource all name an item id + count
+        item_id = _norm_id(g('item') or g('indexToCraft') or g('itemIndex') or g('resource'))
+        if item_id is not None:
+            d['required_item_id'] = item_id
+        cnt = g('number') or g('numberToCraft')
+        if cnt: d['required_count'] = int(cnt)
+        prog = g('numberCollected')
+        if prog is not None: d['progress'] = int(prog)
+
+    # on-hand completability for "possess/hand-in" item quests
+    iid = d.get('required_item_id')
+    if iid is not None and qt_i in QUEST_ITEM_TYPES:
+        need = d.get('required_count', 1)
+        name = ITEM.get(str(iid))
+        on_hand = by_id.get(iid, 0)
+        if not on_hand and name: on_hand = by_name.get(name, 0)
+        d['required_item'] = name or f'#{iid}'
+        d['on_hand'] = on_hand
+        d['completable_now'] = on_hand >= need
+    return d
+
+XSI_TYPE = '{http://www.w3.org/2001/XMLSchema-instance}type'
+# Objective xsi:type -> human verb. Covers the vanilla + Qi objective classes.
+_OBJECTIVE_VERB = {'DeliverObjective':'Deliver','CollectObjective':'Collect',
+ 'ShipObjective':'Ship','FishObjective':'Catch fish','SlayObjective':'Slay',
+ 'GiftObjective':'Gift','JKScoreObjective':'Arcade score','ReachMineFloorObjective':'Reach mine floor',
+ 'DonateObjective':'Donate','ExploreAreaObjective':'Explore','GiftLoveObjective':'Give loved gift'}
+
+def _ctx_tag_to_item(tag):
+    """Turn an objective context tag into a readable item hint. 'item_ectoplasm'
+    -> 'ectoplasm'; 'id_o_141' -> resolved item name or '#141'; else the raw tag."""
+    if not tag:
+        return None
+    parts = tag.split()
+    out = []
+    for t in parts:
+        if t.startswith('id_o_'):
+            iid = t[5:]; out.append(ITEM.get(iid, f'#{iid}'))
+        elif t.startswith('item_'):
+            out.append(t[5:].replace('_', ' '))
+        else:
+            out.append(t)
+    return ', '.join(out)
+
+def _special_orders(root):
+    """Parse the special-orders board: active (accepted), available, and completed.
+    Includes each order's objectives with progress (currentCount/maxCount), the item
+    hint from its context tags, and rewards. Names/descriptions in the save are
+    localisation tokens (e.g. [Wizard_Name]); use `key`+`requester` to identify them."""
+    def reward(o):
+        g = 0; mail = []
+        for r in o.findall('rewards'):
+            rt = r.get(XSI_TYPE)
+            if rt == 'MoneyReward':
+                amt = r.find('amount/int')
+                if amt is not None and amt.text: g += int(amt.text)
+            elif rt == 'MailReward':
+                mail += [s.text for s in r.findall('grantedMails/string') if s.text]
+        return g, mail
+    def objective(ob):
+        return {'type': _OBJECTIVE_VERB.get(ob.get(XSI_TYPE), ob.get(XSI_TYPE)),
+                'progress': int(_t(ob, 'currentCount') or 0),
+                'required': int(_t(ob, 'maxCount') or 0),
+                'item': _ctx_tag_to_item(_t(ob, 'acceptableContextTagSets')),
+                'target': _t(ob, 'targetName')}
+    def parse(o):
+        name = _t(o, 'questName'); desc = _t(o, 'questDescription')
+        token = lambda s: bool(s) and s.startswith('[') and s.endswith(']')
+        g, mail = reward(o)
+        return {'key': _t(o, 'questKey'), 'requester': _t(o, 'requester'),
+                'name': None if token(name) else name,
+                'description': None if token(desc) else desc,
+                'state': _t(o, 'questState'),
+                'due_day_of_year': int(_t(o, 'dueDate')) if (_t(o, 'dueDate') or '').lstrip('-').isdigit() else None,
+                'objectives': [objective(ob) for ob in o.findall('objectives')],
+                'reward_gold': g, 'reward_mail': mail}
+    def orders_in(tag):
+        node = root.find(tag)
+        return [parse(o) for o in node.findall('SpecialOrder')] if node is not None else []
+    completed = root.find('completedSpecialOrders')
+    done = [s.text for s in completed.findall('string')] if completed is not None else []
+    return {'active': orders_in('specialOrders'),
+            'available_on_board': orders_in('availableSpecialOrders'),
+            'completed_count': len(done), 'completed_keys': done,
+            'note': "objectives show progress/required and the item to deliver/collect. name/"
+                    "description are null when the save only stores a localisation token - use "
+                    "`key` + `requester` (e.g. key 'Wizard' = the Wizard's order) to identify it."}
+
+def quests(root):
+    """Every player's active quest log + the special-orders board. For item
+    delivery/harvest/resource quests, reports the requested item, how many are
+    on hand (across all backpacks + chests), and whether it's completable now."""
+    by_name, by_id = _on_hand_index(root)
+    players_out = []
+    for p in _players(root):
+        qlog = p.find('questLog')
+        qs = [_quest_fields(q, by_name, by_id) for q in qlog.findall('Quest')] if qlog is not None else []
+        players_out.append({'player': _t(p,'name'), 'quest_count': len(qs), 'quests': qs})
+    return {'players': players_out,
+            'special_orders': _special_orders(root),
+            'note': "completable_now = the requested item is on hand (across all "
+                    "backpacks + chests) in the required quantity; you still have to "
+                    "hand it in. Monster/fishing/socialize quests track progress "
+                    "counters instead. Item ids not in the local name table show as "
+                    "'#id' - use wiki tools or research=True to identify them."}

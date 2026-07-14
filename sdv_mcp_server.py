@@ -178,6 +178,56 @@ def community_center(save_path: SavePath = "") -> dict:
     still required, and Vault payment status."""
     root, _ = _resolve(save_path); return P.community_center(root)
 
+_BUNDLE_LOCK_HINTS = [
+    (("desert trader", "calico desert", "the desert", "sandy's", "oasis"), "desert"),
+    (("krobus", "sewer"), "sewers"),
+    (("skull cavern",), "skull_cavern"),
+    (("casino",), "casino"),
+    (("ginger island", "island trader", "volcano", "gourmand", "professor snail", "pirate cove"), "ginger_island"),
+]
+
+@mcp.tool()
+def bundle_sourcing(
+    save_path: SavePath = "",
+    research: Annotated[bool, Field(description="Fetch a wiki how_to_obtain summary for each missing bundle item. Needs network.")] = True,
+    research_limit: Annotated[int, Field(description="Max distinct items to research (caps wiki calls).", ge=1, le=40)] = 20,
+) -> dict:
+    """Incomplete Community Center bundles with, for each still-needed item, a wiki
+    how-to-obtain summary AND reachability hints: if the summary references a gated
+    location that isn't unlocked in this save (e.g. Desert, Ginger Island), it's
+    flagged via locked_source_hints (a hint - the item may have an ungated source
+    too). Includes the full `unlocks` snapshot."""
+    root, _ = _resolve(save_path)
+    cc = P.community_center(root)
+    unlk = P.unlocks(root)
+    items = {}
+    for b in cc.get("incomplete_bundles", []):
+        for it in b.get("items_remaining", []):
+            items.setdefault(it, []).append(f"{b['room']}/{b['bundle']}")
+    sourcing = {}
+    if research:
+        for item in list(items)[:research_limit]:
+            sm = WIKI.summary(item)
+            text = (sm.get("summary") or "")
+            entry = {"how_to_obtain": text or None, "url": sm.get("url"), "locked_source_hints": []}
+            low = text.lower()
+            for keywords, area_key in _BUNDLE_LOCK_HINTS:
+                if any(k in low for k in keywords):
+                    area = unlk["areas"].get(area_key)
+                    if isinstance(area, dict) and not area["unlocked"]:
+                        entry["locked_source_hints"].append({"area": area_key, "requires": area.get("requires")})
+            sourcing[item] = entry
+    return {"incomplete_bundles": cc.get("incomplete_bundles", []),
+            "missing_items": {k: v for k, v in items.items()},
+            "sourcing": sourcing,
+            "unlocks": unlk["areas"],
+            "note": "missing_items maps each still-needed item to the bundles wanting it. sourcing["
+                    "item].how_to_obtain is the wiki acquisition summary. locked_source_hints flags "
+                    "when the summary REFERENCES a location that isn't unlocked in this save - it is a "
+                    "HINT, not proof the item is unreachable (many items have an alternate ungated "
+                    "source, e.g. Pufferfish at the Beach). Read how_to_obtain to confirm whether an "
+                    "open source exists. Cross-check quality/quantity in `community_center`."}
+
 @mcp.tool()
 def inventory(save_path: SavePath = "",
               full: Annotated[bool, Field(description="List every chest item instead of just the top 40 (merged view only).")] = False,
@@ -235,8 +285,18 @@ def player_tools(save_path: SavePath = "") -> dict:
 
 @mcp.tool()
 def wallet(save_path: SavePath = "") -> dict:
-    """Special keys/items owned (Rusty Key, Skull Key, Club Card, etc.)."""
+    """Special keys/items owned (Rusty Key, Skull Key, Club Card, etc.). Reads
+    1.6 mail flags + legacy booleans, so it's correct on 1.5 and 1.6 saves."""
     root, _ = _resolve(save_path); return P.wallet(root)
+
+@mcp.tool()
+def unlocks(save_path: SavePath = "") -> dict:
+    """Which gated locations/vendors are reachable in THIS save (Desert + Desert
+    Trader, Sewers/Krobus, Skull Cavern, Casino, Quarry, Greenhouse, Minecarts,
+    Movie Theater, Adventurer's Guild, Ginger Island) with what each gates and, if
+    locked, how to unlock it. Use this to filter item-acquisition advice to what's
+    actually available (e.g. don't suggest the Desert Trader if the bus isn't fixed)."""
+    root, _ = _resolve(save_path); return P.unlocks(root)
 
 @mcp.tool()
 def can_complete_now(save_path: SavePath = "") -> dict:
@@ -253,6 +313,25 @@ def mods(save_path: SavePath = "") -> dict:
     """Detect mods and list what couldn't be mapped to vanilla references
     (modded item ids, unmapped bundle/museum entries)."""
     root, _ = _resolve(save_path); return P.detect_mods(root)
+
+@mcp.tool()
+def missing_recipes(save_path: SavePath = "") -> dict:
+    """Per player: cooking + crafting recipes you've LEARNED but not yet made
+    (make these to progress Perfection), with known/made counts and how many you
+    still haven't learned. Pairs with `perfection` Cooking/Crafting categories."""
+    root, _ = _resolve(save_path); return P.missing_recipes(root)
+
+@mcp.tool()
+def shipping_tracker(save_path: SavePath = "") -> dict:
+    """What the host has shipped (basicShipped) by name with lifetime quantities,
+    plus distinct count vs the 154-item Full Shipment / perfection target."""
+    root, _ = _resolve(save_path); return P.shipping_tracker(root)
+
+@mcp.tool()
+def golden_walnuts(save_path: SavePath = "") -> dict:
+    """Golden Walnut progress on Ginger Island: found vs 130, unspent balance,
+    whether the island is unlocked, and repeatable-source progress."""
+    root, _ = _resolve(save_path); return P.golden_walnuts(root)
 
 @mcp.tool()
 def full_report(save_path: SavePath = "") -> dict:
@@ -280,6 +359,24 @@ def wiki_infobox(title: Annotated[str, Field(description="Exact page title, e.g.
     """A page's infobox as structured key/value fields (price/season/location) -
     the most reliable surface for verification."""
     return WIKI.infobox(title)
+
+@mcp.tool()
+def how_to_obtain(item: Annotated[str, Field(description="Item name, e.g. 'Bat Wing', 'Cauliflower', 'Solar Essence'.")]) -> dict:
+    """How to get an item: the wiki's lead-section summary of every acquisition
+    method (monster drops, shop purchases, trades, gifting, crafting) plus the
+    structured infobox (source/season/price). Use this to plan the best way to
+    obtain a quest/bundle item. Call wiki_page(item) for full drop-rate detail."""
+    sm = WIKI.summary(item); ib = WIKI.infobox(item)
+    if sm.get("error") and ib.get("error"):
+        return {"item": item, "error": sm.get("error")}
+    return {"item": sm.get("title") or item, "how_to_obtain": sm.get("summary"),
+            "fields": ib.get("fields"), "url": sm.get("url") or ib.get("url"),
+            "source": "Stardew Valley Wiki (CC BY-NC-SA)",
+            "note": "Summary lists the acquisition methods; some (Desert Trader, Krobus, "
+                    "Skull Cavern, Casino, Ginger Island) require an unlocked location - "
+                    "call `unlocks` to check what's reachable in this save before recommending "
+                    "a method, and combine with deepest mine level/season. wiki_page(item) has "
+                    "drop rates/floors."}
 
 # ============================== calculators ================================
 @mcp.tool()
@@ -520,6 +617,59 @@ def net_worth(save_path: SavePath = "") -> dict:
     """Gold + sellable value of everything held (backpacks + chests + machine
     outputs), data-driven from each item's base sell price. Economy snapshot."""
     root, _ = _resolve(save_path); return P.net_worth(root)
+
+@mcp.tool()
+def quests(
+    save_path: SavePath = "",
+    research: Annotated[bool, Field(description="Fetch wiki context to explain how to complete each quest: "
+                                                "the requested item's infobox (how/where to obtain) for item "
+                                                "quests, plus a wiki search for the quest title. Needs network.")] = False,
+    research_limit: Annotated[int, Field(description="Max quests to research when research=True (caps wiki calls).", ge=1, le=25)] = 8,
+) -> dict:
+    """Every player's active quest journal + the special-orders board. For item
+    delivery/harvest/resource quests it names the requested item, counts how many
+    are on hand (across all backpacks + chests), and flags `completable_now` when
+    you already hold enough to turn in. Monster/fishing/socialize quests report
+    progress counters. Set research=True to attach wiki guidance per quest."""
+    root, _ = _resolve(save_path)
+    data = P.quests(root)
+    if research:
+        # Research item-based quests first (their item infobox is the most useful),
+        # so a limited wiki budget is spent where it helps most.
+        all_q = [q for pl in data["players"] for q in pl["quests"]]
+        def named_item(q):
+            it = q.get("required_item")
+            return it if (it and not str(it).startswith("#")) else None
+        all_q.sort(key=lambda q: named_item(q) is None)
+        seen = set(); budget = research_limit
+        for q in all_q:
+            if budget <= 0:
+                break
+            info = {}
+            item = named_item(q)
+            if item and item not in seen:
+                seen.add(item)
+                ib = WIKI.infobox(item)
+                sm = WIKI.summary(item)
+                info["item"] = {"name": item,
+                                "how_to_obtain": sm.get("summary"),
+                                "fields": ib.get("fields"),
+                                "url": ib.get("url") or sm.get("url")}
+            title = q.get("title")
+            if title:
+                hits = WIKI.search(title, limit=3).get("results") or []
+                if hits:
+                    info["quest_search"] = hits
+            if info:
+                q["wiki"] = info
+                budget -= 1
+        data["research_note"] = ("wiki 'item.how_to_obtain' summarises every acquisition method "
+                                 "(drops, shops, trades, gifting); 'item.fields' add structured "
+                                 "price/season/source; 'quest_search' links the quest's wiki entry. "
+                                 f"Researched up to {research_limit} quests (item quests first). "
+                                 "Some sources need an unlocked location - call `unlocks` to filter "
+                                 "to what's reachable. For drop rates/mine floors call wiki_page(item).")
+    return data
 
 def _parse_args():
     import argparse

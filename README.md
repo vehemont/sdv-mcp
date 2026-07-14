@@ -1,8 +1,16 @@
 # sdv-mcp
 
-I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. This is a read-only MCP server that reads a Stardew Valley save and answers questions about it. It includes 40 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
+I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. This is a read-only MCP server that reads a Stardew Valley save and answers questions about it. It includes 47 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
 
-> 🚨 This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Stardew Valley makes a one-night-before backup automatically, denoted by the sufix _old in the filename.
+> [!CAUTION]
+> This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Then once you feel comfortable, you can point it at your real save, 
+
+
+Example questions:
+> "What is my best money maker that I should be utilizing?"
+> "What should I focus on next?"
+> "Can anything be completed with what I have?"
+
 
 ## Requirements
 - Python 3.10+
@@ -12,16 +20,14 @@ Keep the four modules in the same folder — the server imports the others from 
 
 ## Install into a client
 
-### Recommended: uvx (auto-download, npx-style)
-Needs [uv](https://docs.astral.sh/uv/). uvx clones/builds/caches the repo and runs
-it — no manual install, no venv:
+### Recommended: uvx
+Needs [uv](https://docs.astral.sh/uv/):
 ```json
 {
   "mcpServers": {
     "sdv-mcp": {
       "command": "uvx",
       "args": [
-        "--from", "git+https://github.com/vehemont/sdv-mcp",
         "sdv-mcp",
         "--save-dir", "C:/Users/you/AppData/Roaming/StardewValley/Saves/FarmName_123456"
       ]
@@ -29,8 +35,9 @@ it — no manual install, no venv:
   }
 }
 ```
-Pin a version with `git+https://github.com/vehemont/sdv-mcp@v0.1.0`. Once it's on
-PyPI this collapses to `"args": ["sdv-mcp", "--save-dir", "..."]`.
+`uvx` pulls the package from [PyPI](https://pypi.org/project/sdv-mcp/). Pin a version
+with `sdv-mcp==0.1.0`, or install the latest dev build straight from git by adding
+`"--from", "git+https://github.com/vehemont/sdv-mcp"` before `"sdv-mcp"`.
 
 ### Alternative: run a local checkout
 ```json
@@ -48,8 +55,7 @@ PyPI this collapses to `"args": ["sdv-mcp", "--save-dir", "..."]`.
 ```
 macOS/Linux use `python3`; `pip install -r requirements.txt` first.
 
-Either way: runs on stdio. Point `--save-dir` at your save FOLDER (main file
-auto-located) or `--save` at the file; skip both and it auto-discovers.
+Runs on stdio. Point `--save` at the save file you want to use; skip and it auto-discovers in the usual directory, but the auto-discovery won't work if you have multiple save files.
 
 ## Picking a save
 Precedence for which save a tool reads:
@@ -93,7 +99,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 }
 ```
 
-## Tools (40)
+## Tools (47)
 
 ### Save state
 | Tool | What |
@@ -106,7 +112,8 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `monster_goals` | Guild eradication goals: kills vs target + reward |
 | `friendships` | Villager hearts/points + spouse, per player |
 | `player_tools` | Each player's tools + upgrade tier |
-| `wallet` | Keys/special items (Rusty Key, Skull Key, Club Card, ...) |
+| `wallet` | Keys/special items (Rusty Key, Skull Key, Club Card, ...). 1.5 + 1.6 aware (reads mail flags) |
+| `unlocks` | Which gated locations/vendors are reachable (Desert + Desert Trader, Sewers/Krobus, Skull Cavern, Casino, Quarry, Greenhouse, Minecarts, Movie Theater, Guild, Ginger Island) + how to unlock the rest |
 | `feed` | Animals, silo hay, fiber, days of feed covered (+ fiber-as-grass-starters) |
 | `full_report` | All of the above in one shot |
 
@@ -122,9 +129,14 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 ### Planning + completion
 | Tool | What |
 |------|------|
+| `quests` | Per-player quest journal + special-orders board (objectives + progress); item quests show requested item, on-hand count, and `completable_now`. `research=True` attaches a wiki `how_to_obtain` summary + infobox for each requested item |
 | `can_complete_now` | CC bundles you could finish from what's in your chests right now |
+| `bundle_sourcing` | Incomplete bundles + per missing-item wiki how-to-obtain + unlock-aware `locked_source_hints` (flags sources behind gated locations) |
 | `missing_museum` | Undonated minerals + artifacts, with where they drop |
-| `perfection` | Real weighted Perfection %: 11 categories, each with have/total + earned % |
+| `missing_recipes` | Cooking/crafting recipes learned-but-not-made (+ how many not yet learned), per player |
+| `shipping_tracker` | Items shipped by name + qty; distinct count vs the 154 Full-Shipment target |
+| `golden_walnuts` | Ginger Island walnut progress: found vs 130, unspent, island-unlock + repeatable sources |
+| `perfection` | Real weighted Perfection %: 11 categories, each with have/total + earned %. 1.6-accurate (Farmer Level = player.Level/25) + per-player co-op breakdown |
 | `daily_briefing` | Morning digest: luck, birthdays, festivals, machines/crops ready, pets due |
 | `gift_helper` | Birthdays (from save) + your hearts + loved gifts, flags what you already hold |
 | `ready_to_collect` | Machines with product ready + crops ready to harvest |
@@ -153,6 +165,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `wiki_search` | Search the Stardew Valley Wiki (titles + snippets) |
 | `wiki_page` | A page (or one section) as clean text — to verify facts / pull context |
 | `wiki_infobox` | A page's infobox as structured fields (price/season/location) |
+| `how_to_obtain` | Every way to get an item (drops, shops, trades, gifting) — the wiki lead summary + infobox source. Plan how to get a quest/bundle item |
 | `villager_schedule` | A villager's wiki schedule + your save's date/weather/hearts |
 ```
 
@@ -163,9 +176,10 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 - `sdv_parser.py` — the read-only save parser (ElementTree)
 - `sdv_wiki.py` — MediaWiki Action API client (api.php; the wiki's rest.php returns empty, so Action API it is), cached + rate-limited
 - `sdv_calc.py` — the calculators + reference tables
-- `sdv_mcp_server.py` — the 40 tools
+- `sdv_mcp_server.py` — the 47 tools
 
 ## Known limits
 - Vanilla + whatever this wiki documents. Modded content lives on separate wikis.
-- Full Shipment / missing-recipes by *name* aren't built yet — `perfection` gives the counts.
-- Wiki tools need outbound network. The save tools don't.
+- `missing_recipes` lists recipes you've *learned* but not made; recipes not yet learned show only as a count (they aren't in the save). `shipping_tracker` lists what you've shipped by name — a by-name "still to ship" list isn't modelled (the save only stores what shipped), so its remaining count is approximate vs the 154-item set.
+- `quests`: `completable_now` covers item delivery/harvest/resource quests (you still hand the item in); monster/fishing/socialize quests report progress counters instead. Special-order item objectives aren't fully modelled. Item ids missing from the local name table show as `#id` — use `research=True` or the wiki tools to identify them.
+at- Wiki tools need outbound network. The save tools don't.
