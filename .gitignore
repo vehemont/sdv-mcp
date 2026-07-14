@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+# never commit save files
+*_[0-9]*/
