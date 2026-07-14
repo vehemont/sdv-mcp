@@ -32,8 +32,10 @@ import sdv_calc as CALC
 mcp = FastMCP("stardew-save")
 
 # ---- reusable annotated parameter types -----------------------------------
-SavePath = Annotated[str, Field(description="Path to the main save file (e.g. .../Saves/Farm_123/Farm_123). "
-                                            "Leave empty to auto-discover the single save on this machine.")]
+SavePath = Annotated[str, Field(description="Path to a save file OR a save folder (e.g. .../Saves/Farm_123 "
+                                            "or .../Saves/Farm_123/Farm_123). Leave empty to use the save "
+                                            "configured at server startup (--save/--save-dir or SDV_SAVE_PATH/"
+                                            "SDV_SAVE_DIR), else auto-discover the single save on this machine.")]
 PlayerName = Annotated[str, Field(description="Player/farmhand name; empty = host player.")]
 Season = Literal["", "spring", "summer", "fall", "winter"]
 Weather = Literal["", "sunny", "rain"]
@@ -41,17 +43,40 @@ Quality = Literal["normal", "silver", "gold", "iridium"]
 AutoBool = Literal["auto", "true", "false"]
 Skill = Literal["farming", "fishing", "foraging", "mining", "combat"]
 
+# Default save configured at startup: env var now, CLI arg may override in __main__.
+# May be a save FILE or a save FOLDER; empty falls back to auto-discovery.
+DEFAULT_SAVE = os.environ.get("SDV_SAVE_PATH") or os.environ.get("SDV_SAVE_DIR") or ""
+
+def _save_file_in_dir(d):
+    """Given a Stardew save FOLDER, return its main save file. Stardew names the
+    file the same as the folder; fall back to the first non-backup file."""
+    base = os.path.basename(os.path.normpath(d))
+    cand = os.path.join(d, base)
+    if os.path.isfile(cand):
+        return cand
+    for f in sorted(os.listdir(d)):
+        fp = os.path.join(d, f)
+        if os.path.isfile(fp) and not f.endswith("_old") and not f.startswith("SaveGameInfo"):
+            return fp
+    raise ValueError(f"No Stardew save file found in directory: {d}")
+
 def _resolve(save_path: str = ""):
-    if save_path:
-        if not os.path.isfile(save_path):
-            raise ValueError(f"No save file at: {save_path}")
-        return P.load_save(save_path), save_path
+    """Resolve a save FILE or FOLDER to (parsed_root, file_path). Precedence:
+    explicit save_path arg > startup default (DEFAULT_SAVE) > auto-discovery."""
+    target = save_path or DEFAULT_SAVE
+    if target:
+        if os.path.isdir(target):
+            target = _save_file_in_dir(target)
+        if not os.path.isfile(target):
+            raise ValueError(f"No save file at: {target}")
+        return P.load_save(target), target
     saves = P.find_saves()
     if not saves:
-        raise ValueError("No Stardew saves found automatically. Pass save_path explicitly.")
+        raise ValueError("No Stardew saves found. Configure one with --save/--save-dir, the "
+                         "SDV_SAVE_PATH/SDV_SAVE_DIR env var, or pass save_path.")
     if len(saves) > 1:
-        raise ValueError("Multiple saves found; pass save_path. Options: "
-                         + "; ".join(f"{s['farm']} -> {s['path']}" for s in saves))
+        raise ValueError("Multiple saves found; configure one (--save-dir / SDV_SAVE_DIR) or pass "
+                         "save_path. Options: " + "; ".join(f"{s['farm']} -> {s['path']}" for s in saves))
     return P.load_save(saves[0]['path']), saves[0]['path']
 
 # ======================= output schemas (calculators) =====================
@@ -472,5 +497,22 @@ def net_worth(save_path: SavePath = "") -> dict:
     outputs), data-driven from each item's base sell price. Economy snapshot."""
     root, _ = _resolve(save_path); return P.net_worth(root)
 
+def _parse_args():
+    import argparse
+    ap = argparse.ArgumentParser(
+        description="Stardew Valley save inspector - read-only MCP server.")
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--save", metavar="FILE",
+                   help="Path to a specific save file (.../Saves/Farm_123/Farm_123).")
+    g.add_argument("--save-dir", metavar="DIR",
+                   help="Path to a save FOLDER (.../Saves/Farm_123); the main save file is "
+                        "auto-located inside. Overrides SDV_SAVE_PATH/SDV_SAVE_DIR.")
+    return ap.parse_args()
+
 if __name__ == "__main__":
+    _args = _parse_args()
+    if _args.save:
+        DEFAULT_SAVE = _args.save
+    elif _args.save_dir:
+        DEFAULT_SAVE = _args.save_dir
     mcp.run()

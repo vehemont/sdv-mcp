@@ -19,18 +19,41 @@ Add to your MCP config (e.g. `claude_desktop_config.json`), absolute path to the
   "mcpServers": {
     "stardew-save": {
       "command": "python",
-      "args": ["/path/to/stardew-save-mcp/sdv_mcp_server.py"]
+      "args": [
+        "/path/to/sdv-mcp/sdv_mcp_server.py",
+        "--save-dir", "C:/Users/you/AppData/Roaming/StardewValley/Saves/FarmName_123456"
+      ]
     }
   }
 }
 ```
-macOS/Linux use `python3`. Runs on stdio.
+macOS/Linux use `python3`. Runs on stdio. Point `--save-dir` at your save FOLDER
+(the main save file inside is auto-located); or `--save` at the file itself. Skip
+both and it auto-discovers.
 
 ## Picking a save
-Every tool takes an optional `save_path`. Leave it blank and it auto-discovers saves (Windows `%APPDATA%\StardewValley\Saves`, macOS/Linux `~/.config` + Application Support, Steam Proton). One save found = it uses it; several = call `list_saves` and pass the path. Point at the **main save file**, not the folder:
-`.../Saves/FarmName_123456/FarmName_123456`
+Precedence for which save a tool reads:
+1. An explicit `save_path` on the tool call (a save file **or** a save folder).
+2. The save configured at server startup — `--save-dir DIR` / `--save FILE`, or the
+   `SDV_SAVE_DIR` / `SDV_SAVE_PATH` env var. Set this once in the MCP config and you
+   never pass `save_path` again. A CLI flag overrides the env var.
+3. Auto-discovery (Windows `%APPDATA%\StardewValley\Saves`, macOS/Linux `~/.config`
+   + Application Support, Steam Proton). One save = used; several = call `list_saves`
+   and pass the path.
 
-Homelab note: if the save lives on a NAS share, just pass its path. Reads are cached by file mtime, so repeated calls in a session are cheap and always reflect the last night's sleep (the game only writes on sleep).
+Either a folder (`.../Saves/FarmName_123456`) or the file
+(`.../Saves/FarmName_123456/FarmName_123456`) works everywhere a save is accepted —
+given a folder, the main save file is auto-located (ignores `_old` backups and
+`SaveGameInfo`).
+
+Env-var config example (instead of the CLI flag):
+```json
+"env": { "SDV_SAVE_DIR": "C:/Users/you/AppData/Roaming/StardewValley/Saves/FarmName_123456" }
+```
+
+Homelab note: point it at a NAS share path if that's where the save lives. Reads are
+cached by file mtime, so repeated calls in a session are cheap and always reflect the
+last night's sleep (the game only writes on sleep).
 
 ## Tools (40)
 
