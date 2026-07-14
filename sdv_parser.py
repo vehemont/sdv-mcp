@@ -1144,8 +1144,20 @@ def buildings(root):
         elif bt in ANIMAL_BUILDINGS:
             animal_capacity += ANIMAL_BUILDINGS[bt][1]
 
+    # The greenhouse Building element exists on the farm from the start in a ruined
+    # state; it's only a real, usable greenhouse once the Pantry bundles are done, which
+    # is recorded on the Farm as greenhouseUnlocked (NOT the building's presence).
+    gh_unlocked = any((e.text or '').strip().lower() == 'true'
+                      for e in root.iter('greenhouseUnlocked'))
+
     listed = []
     for bt, c in counts.most_common():
+        if bt == 'Greenhouse':
+            # don't list the ruined greenhouse as an owned building
+            if not gh_unlocked:
+                continue
+            listed.append({'type': bt, 'count': c, 'unlocked': True})
+            continue
         entry = {'type': bt, 'count': c}
         if bt in ANIMAL_BUILDINGS:
             entry['animal_house_tier'] = ANIMAL_BUILDINGS[bt][0]
@@ -1168,7 +1180,7 @@ def buildings(root):
         'house_upgrades': house,
         'animal_housing': {'capacity': animal_capacity, 'occupied': occupied,
                            'free_slots': max(0, animal_capacity - occupied)},
-        'has_greenhouse': bool(has('Greenhouse')),
+        'has_greenhouse': gh_unlocked,
         'silos': has('Silo'),
         'has_stable': bool(has('Stable')),
         'has_mill': bool(has('Mill')),
@@ -1178,7 +1190,9 @@ def buildings(root):
         'note': 'Farm buildings (completed) with animal-house tier where applicable, plus '
                 'per-player farmhouse upgrade level. animal_housing.capacity is the total '
                 'across barns/coops; free_slots = capacity - current animals. House level 3 '
-                'unlocks the cellar; buildings still under construction are listed separately.',
+                'unlocks the cellar; buildings still under construction are listed separately. '
+                'has_greenhouse reflects greenhouseUnlocked (Pantry bundles complete) - the '
+                'ruined greenhouse present on the farm by default does NOT count as owned.',
     }
 
 def crops_ready(root):

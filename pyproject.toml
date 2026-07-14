@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sdv-mcp"
-version = "0.2.11"
+version = "0.2.12"
 description = "Read-only MCP server for inspecting Stardew Valley save files: save parser, Stardew Wiki verification, and 18 calculators across 49 tools."
 readme = "README.md"
 requires-python = ">=3.10"
