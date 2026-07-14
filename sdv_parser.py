@@ -7,7 +7,7 @@ caller (CLI or MCP server) can present facts and make its own recommendations.
 The parser NEVER writes to the save.
 """
 from __future__ import annotations
-import os, glob, re, xml.etree.ElementTree as ET
+import os, re, xml.etree.ElementTree as ET
 from collections import Counter
 
 XSI = '{http://www.w3.org/2001/XMLSchema-instance}type'
@@ -121,28 +121,6 @@ def load_save(path):
     root = ET.fromstring(data)
     _CACHE.clear(); _CACHE[key] = root
     return root
-
-def find_saves():
-    """Locate Stardew save folders across common OS locations. Returns list of
-    {farm, path} where path is the main save file."""
-    roots = []
-    ad = os.environ.get('APPDATA')
-    if ad: roots.append(os.path.join(ad, 'StardewValley', 'Saves'))
-    home = os.path.expanduser('~')
-    roots += [os.path.join(home, '.config', 'StardewValley', 'Saves'),
-              os.path.join(home, 'Library', 'Application Support', 'StardewValley', 'Saves')]
-    # Steam Proton (Linux)
-    roots += glob.glob(os.path.join(home, '.steam', 'steam', 'steamapps', 'compatdata',
-                                    '413150', 'pfx', 'drive_c', 'users', '*', 'AppData',
-                                    'Roaming', 'StardewValley', 'Saves'))
-    out = []
-    for r in roots:
-        if not os.path.isdir(r): continue
-        for farm in os.listdir(r):
-            main = os.path.join(r, farm, farm)
-            if os.path.isfile(main):
-                out.append({'farm': farm, 'path': main})
-    return out
 
 # ---- helpers --------------------------------------------------------------
 def _t(el, tag, default=None):

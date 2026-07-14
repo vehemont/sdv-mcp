@@ -1,6 +1,6 @@
 # sdv-mcp
 
-I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. This is a read-only MCP server that reads a Stardew Valley save and answers questions about it. It includes 47 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
+This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 46 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
 
 > [!CAUTION]
 > This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Then once you feel comfortable, you can point it at your real save to receive the save-per-night updates. 
@@ -17,6 +17,8 @@ Example questions that utilize the state of your save, tailoring responses to yo
 
 > "Give me a priority step-by-step list on completing my fishing bundle."
 
+> "Where is the chest that has the pearl I need to gift to Clint?"
+
 ## Requirements
 - Python 3.10+
 - `pip install -r requirements.txt` (just the `mcp` SDK; wiki client uses stdlib `urllib`)
@@ -26,7 +28,9 @@ Keep the four modules in the same folder — the server imports the others from 
 ## Install into a client
 
 ### Recommended: uvx
-Needs [uv](https://docs.astral.sh/uv/):
+Needs [uv](https://docs.astral.sh/uv/), pass a save folder/directory with `--save-dir` or just `--save` with the actual save file, which is just the same name as the folder/directory:
+
+`--save-dir` example on Windows with Claude Desktop:
 ```json
 {
   "mcpServers": {
@@ -34,12 +38,13 @@ Needs [uv](https://docs.astral.sh/uv/):
       "command": "uvx",
       "args": [
         "sdv-mcp",
-        "--save-dir", "C:/Users/you/AppData/Roaming/StardewValley/Saves/FarmName_123456"
+        "--save-dir", "C:\\Users\\you\\AppData\\Roaming\\StardewValley\\Saves\\FarmName_437005740"
       ]
     }
   }
 }
 ```
+
 `uvx` pulls the package from [PyPI](https://pypi.org/project/sdv-mcp/). Pin a version
 with `sdv-mcp==0.1.0`, or install the latest dev build straight from git by adding
 `"--from", "git+https://github.com/vehemont/sdv-mcp"` before `"sdv-mcp"`.
@@ -60,27 +65,7 @@ with `sdv-mcp==0.1.0`, or install the latest dev build straight from git by addi
 ```
 macOS/Linux use `python3`; `pip install -r requirements.txt` first.
 
-Runs on stdio. Point `--save` at the save file you want to use; skip and it auto-discovers in the usual directory, but the auto-discovery won't work if you have multiple save files.
-
-## Picking a save
-Precedence for which save a tool reads:
-1. An explicit `save_path` on the tool call (a save file **or** a save folder).
-2. The save configured at server startup — `--save-dir DIR` / `--save FILE`, or the
-   `SDV_SAVE_DIR` / `SDV_SAVE_PATH` env var. Set this once in the MCP config and you
-   never pass `save_path` again. A CLI flag overrides the env var.
-3. Auto-discovery (Windows `%APPDATA%\StardewValley\Saves`, macOS/Linux `~/.config`
-   + Application Support, Steam Proton). One save = used; several = call `list_saves`
-   and pass the path.
-
-Either a folder (`.../Saves/FarmName_123456`) or the file
-(`.../Saves/FarmName_123456/FarmName_123456`) works everywhere a save is accepted —
-given a folder, the main save file is auto-located (ignores `_old` backups and
-`SaveGameInfo`).
-
-Env-var config example (instead of the CLI flag):
-```json
-"env": { "SDV_SAVE_DIR": "C:/Users/you/AppData/Roaming/StardewValley/Saves/FarmName_123456" }
-```
+Runs on stdio. You must point `--save`/`--save-dir` (or the env var) at the save you want; the server reads only that save and never scans your machine for others.
 
 ## Disabling tools
 Any tool you consider cheating/unfair can be turned off so the model never sees it.
@@ -104,12 +89,11 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 }
 ```
 
-## Tools (47)
+## Tools (46)
 
 ### Save state
 | Tool | What |
 |------|------|
-| `list_saves` | Discovered saves (farm + path) |
 | `overview` | Date, players, shared money, lifetime earnings, deepest mine, version |
 | `players` | Per-player levels, XP, XP-to-next, professions, spouse, backpack, house |
 | `community_center` | Rooms done/left, incomplete bundles + exact items needed, Vault status |
@@ -173,14 +157,11 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `how_to_obtain` | Every way to get an item (drops, shops, trades, gifting) — the wiki lead summary + infobox source. Plan how to get a quest/bundle item |
 | `villager_schedule` | A villager's wiki schedule + your save's date/weather/hearts |
 
-## Packaging
-`pyproject.toml` makes this a real package: `uv build` produces a wheel, and the `sdv-mcp` console script maps to `sdv_mcp_server:main`. Publish with `uv publish`.
-
 ## Files
 - `sdv_parser.py` — the read-only save parser (ElementTree)
 - `sdv_wiki.py` — MediaWiki Action API client (api.php; the wiki's rest.php returns empty, so Action API it is), cached + rate-limited
 - `sdv_calc.py` — the calculators + reference tables
-- `sdv_mcp_server.py` — the 47 tools
+- `sdv_mcp_server.py` — the 46 tools
 
 ## Known limits
 - Vanilla + whatever the wiki documents only. Modded content lives on separate wikis.
