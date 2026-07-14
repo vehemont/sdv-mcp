@@ -68,7 +68,7 @@ macOS/Linux use `python3`; `pip install -r requirements.txt` first.
 Runs on stdio. You must point `--save`/`--save-dir` (or the env var) at the save you want; the server reads only that save and never scans your machine for others.
 
 ## Disabling tools
-Any tool you consider cheating/unfair can be turned off so the model never sees it.
+By default, all tools are enabled. Any tool you consider cheating/unfair can be turned off so the model never sees it.
 Two knobs, both settable as a CLI arg (wins) or an env var:
 
 - **Denylist** — `--disable-tools a,b,c` or `SDV_DISABLE_TOOLS=a,b,c`. Serves everything except those.
