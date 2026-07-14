@@ -195,4 +195,3 @@ uv build && uv publish   # prompts for token, or set UV_PUBLISH_TOKEN
 - Vanilla + whatever this wiki documents. Modded content lives on separate wikis.
 - Full Shipment / missing-recipes by *name* aren't built yet — `perfection` gives the counts.
 - Wiki tools need outbound network. The save tools don't.
-                                                                                                                                                                                                                                                                                                                                                                                                                                   
