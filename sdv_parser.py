@@ -955,11 +955,60 @@ def _days_until(cur_season, cur_day, tgt_season, tgt_day):
     d = tgt_abs - cur_abs
     return d if d >= 0 else d + 112   # wrap to next year
 
+CELLAR_HOUSE_LEVEL = 3  # house upgrade level that unlocks the cellar
+
+def _enabled_cellar_names(root):
+    """Cellar location names that are actually accessible in-game.
+
+    A cellar is real only when its owner has upgraded their house to level 3 (which
+    unlocks the cellar). 8-player saves pre-create all 8 Cellar locations up front, each
+    pre-filled with the game's 33 default (empty) casks -- and <cellarAssignments> entries
+    can exist before the cellar is unlocked -- so counting them by presence alone reports
+    casks the player can't actually reach. We gate on the owner's houseUpgradeLevel."""
+    players = _players(root)
+    up = {}
+    for pl in players:
+        pid = pl.findtext('UniqueMultiplayerID')
+        lvl = pl.findtext('houseUpgradeLevel')
+        up[pid] = int(lvl) if lvl and lvl.lstrip('-').isdigit() else 0
+    names = set()
+    ca = root.find('.//cellarAssignments')
+    items = ca.findall('item') if ca is not None else []
+    if items:
+        for it in items:
+            k = it.findtext('./key/int'); owner = it.findtext('./value/long')
+            if k and k.strip().isdigit() and up.get(owner, 0) >= CELLAR_HOUSE_LEVEL:
+                n = int(k)
+                names.add('Cellar' if n == 1 else f'Cellar{n}')
+    elif players:  # single-player / no assignment map: only the host's "Cellar"
+        host_id = players[0].findtext('UniqueMultiplayerID')
+        if up.get(host_id, 0) >= CELLAR_HOUSE_LEVEL:
+            names.add('Cellar')
+    return names
+
+def _excluded_cellar_object_ids(root):
+    """(#cellars_excluded, {id()s of <Object>s to skip}) for cellar locations that exist
+    in the file but aren't accessible: unassigned phantom player slots, or assigned but
+    the owner hasn't upgraded to the cellar yet. Their default casks shouldn't be reported
+    as owned machines. Lets callers filter in a single root.iter('Object') pass."""
+    enabled = _enabled_cellar_names(root)
+    skip = set(); excluded = 0
+    for loc in root.iter('GameLocation'):
+        nm = loc.findtext('name') or ''
+        if nm.startswith('Cellar') and nm not in enabled:
+            excluded += 1
+            for o in loc.iter('Object'):
+                skip.add(id(o))
+    return excluded, skip
+
 def machines_ready(root):
     """Placed machines whose product is ready to collect (name, product, count)."""
     from collections import Counter
     ready = Counter()
+    _, skip = _excluded_cellar_object_ids(root)
     for o in root.iter('Object'):
+        if id(o) in skip:
+            continue
         rfh = o.find('readyForHarvest')
         if rfh is not None and rfh.text == 'true':
             held = o.find('heldObject'); mn = o.find('name')
@@ -982,7 +1031,10 @@ def machines(root):
     ready (output waiting), working (processing now), idle (empty, ready to load).
     Storage (chests) and decorative craftables are excluded."""
     agg = {}
+    excluded_cellars, skip = _excluded_cellar_object_ids(root)
     for o in root.iter('Object'):
+        if id(o) in skip:
+            continue
         bc = o.find('bigCraftable')
         if bc is None or bc.text != 'true':
             continue
@@ -1001,12 +1053,91 @@ def machines(root):
         else:
             rec['idle'] += 1
     out = sorted(agg.values(), key=lambda r: (-r['count'], r['machine']))
+    note = ('Every accessible placed processing machine by type. state: ready = product '
+            'waiting to collect, working = currently processing, idle = empty and ready to '
+            'load. Storage (chests - see the chests tool) and decorative craftables are '
+            'excluded. For just the collectable output use machines_ready.')
+    if excluded_cellars:
+        note += (f' NOTE: {excluded_cellars} cellar(s) in this save are NOT counted because '
+                 'they are not unlocked (no player has upgraded their house to level 3, which '
+                 'enables the cellar) or belong to unused multiplayer slots. The game '
+                 'pre-creates those cellars pre-filled with 33 default casks each, but they '
+                 'are not actually accessible in-game, so their casks are excluded here.')
     return {'machines':out,'machine_types':len(out),
             'total_machines':sum(r['count'] for r in out),
-            'note':'Every placed processing machine by type. state: ready = product waiting to '
-                   'collect, working = currently processing, idle = empty and ready to load. '
-                   'Storage (chests - see the chests tool) and decorative craftables are excluded. '
-                   'Casks (cellar aging) count. For just the collectable output use machines_ready.'}
+            'inaccessible_cellars_excluded':excluded_cellars,
+            'note':note}
+
+HOUSE_LEVELS = {
+ 0:'Starter farmhouse (no kitchen)',
+ 1:'Kitchen added (can cook; master bedroom)',
+ 2:'Nursery + extra rooms (marriage/children)',
+ 3:'Cellar unlocked (casks; enables wine/cheese aging)',
+}
+# animal-house tier by buildingType, and their standard animal capacity
+ANIMAL_BUILDINGS = {
+ 'Coop':(1,4),'Big Coop':(2,8),'Deluxe Coop':(3,12),
+ 'Barn':(1,4),'Big Barn':(2,8),'Deluxe Barn':(3,12),
+ 'Slime Hutch':(1,20),
+}
+
+def buildings(root):
+    """Farm buildings + farmhouse upgrade levels, so the model knows what's built,
+    what tier it is, remaining animal capacity, and which house upgrades (kitchen,
+    cellar, etc.) are unlocked. Animal capacity comes from each building's animalLimit."""
+    from collections import Counter
+    counts = Counter(); under = Counter()
+    animal_capacity = 0
+    for b in root.iter('Building'):
+        bt = b.findtext('buildingType') or '?'
+        d = b.findtext('daysOfConstructionLeft')
+        if d and d.lstrip('-').isdigit() and int(d) > 0:
+            under[bt] += 1
+            continue
+        counts[bt] += 1
+        ind = b.find('indoors')
+        cap = ind.findtext('animalLimit') if ind is not None else None
+        if cap and cap.lstrip('-').isdigit():
+            animal_capacity += int(cap)
+        elif bt in ANIMAL_BUILDINGS:
+            animal_capacity += ANIMAL_BUILDINGS[bt][1]
+
+    listed = []
+    for bt, c in counts.most_common():
+        entry = {'type': bt, 'count': c}
+        if bt in ANIMAL_BUILDINGS:
+            entry['animal_house_tier'] = ANIMAL_BUILDINGS[bt][0]
+        listed.append(entry)
+
+    occupied = len(farm_animals(root))
+    house = []
+    for p in _players(root):
+        lvl = int(_t(p, 'houseUpgradeLevel', 0))
+        house.append({'player': _t(p, 'name'), 'level': lvl,
+                      'description': HOUSE_LEVELS.get(lvl, f'level {lvl}'),
+                      'cellar_unlocked': lvl >= 3, 'kitchen_unlocked': lvl >= 1})
+
+    def has(*names): return sum(counts.get(n, 0) for n in names)
+    obelisks = [n for n in ('Earth Obelisk','Water Obelisk','Desert Obelisk','Island Obelisk')
+                if counts.get(n)]
+    return {
+        'farm_buildings': listed,
+        'buildings_under_construction': [{'type':k,'count':v} for k,v in under.items()],
+        'house_upgrades': house,
+        'animal_housing': {'capacity': animal_capacity, 'occupied': occupied,
+                           'free_slots': max(0, animal_capacity - occupied)},
+        'has_greenhouse': bool(has('Greenhouse')),
+        'silos': has('Silo'),
+        'has_stable': bool(has('Stable')),
+        'has_mill': bool(has('Mill')),
+        'has_shipping_bin': bool(has('Shipping Bin')),
+        'obelisks': obelisks,
+        'has_gold_clock': bool(has('Gold Clock')),
+        'note': 'Farm buildings (completed) with animal-house tier where applicable, plus '
+                'per-player farmhouse upgrade level. animal_housing.capacity is the total '
+                'across barns/coops; free_slots = capacity - current animals. House level 3 '
+                'unlocks the cellar; buildings still under construction are listed separately.',
+    }
 
 def crops_ready(root):
     """Count of crops fully grown / ready to harvest in tilled soil."""

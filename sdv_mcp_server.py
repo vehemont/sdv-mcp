@@ -339,6 +339,15 @@ def machines(save_path: SavePath = "") -> dict:
     root, _ = _resolve(save_path); return P.machines(root)
 
 @mcp.tool()
+def buildings(save_path: SavePath = "") -> dict:
+    """Farm buildings and farmhouse upgrades: what's built (barns, coops, silo, stable,
+    mill, greenhouse, obelisks, etc.) with animal-house tier and total animal capacity vs
+    current occupancy, plus each player's house upgrade level (kitchen at 1, cellar at 3).
+    Use this to reason about what to build/upgrade next and whether there's room for more
+    animals or which house perks (cooking, cellar aging) are unlocked."""
+    root, _ = _resolve(save_path); return P.buildings(root)
+
+@mcp.tool()
 def feed(save_path: SavePath = "") -> dict:
     """Animal feed status: animals, silo hay, fiber, and days of feed covered."""
     root, _ = _resolve(save_path); return P.feed(root)
