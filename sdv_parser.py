@@ -946,6 +946,47 @@ def machines_ready(root):
             ready[(mn.text if mn is not None else '?', hn.text if hn is not None else '?')] += 1
     return [{'machine':m,'product':p,'count':c} for (m,p),c in ready.most_common()]
 
+# bigCraftables that are storage or decorative rather than processing machines.
+NON_MACHINE_CRAFTABLES = {
+ 'Chest','Stone Chest','Junimo Chest','Big Chest','Big Stone Chest','Mini-Fridge',
+ 'Mini-Shipping Bin','Workbench','Item Pedestal','Garden Pot','Scarecrow','Deluxe Scarecrow',
+ 'Rarecrow','Stone Owl','Stone Junimo','Singing Stone','Boulder','Campfire','Heater',
+ 'Feed Hopper','Empty Capsule','Wood Lamp-post','Furniture Catalogue','Catalogue',
+ 'Wicked Statue','Decorative Trash Can',
+}
+
+def machines(root):
+    """Inventory of every placed processing machine (Furnace, Keg, Cask, Seed Maker,
+    Charcoal Kiln, Tapper, Bee House, ...) grouped by type with counts and state:
+    ready (output waiting), working (processing now), idle (empty, ready to load).
+    Storage (chests) and decorative craftables are excluded."""
+    agg = {}
+    for o in root.iter('Object'):
+        bc = o.find('bigCraftable')
+        if bc is None or bc.text != 'true':
+            continue
+        name = o.findtext('name') or '?'
+        if name in NON_MACHINE_CRAFTABLES:
+            continue
+        rec = agg.setdefault(name, {'machine':name,'count':0,'ready':0,'working':0,'idle':0})
+        rec['count'] += 1
+        mins = o.findtext('minutesUntilReady')
+        mins = int(mins) if mins and mins.lstrip('-').isdigit() else 0
+        held = o.find('heldObject') is not None
+        if o.findtext('readyForHarvest') == 'true':
+            rec['ready'] += 1
+        elif mins > 0 or held:
+            rec['working'] += 1
+        else:
+            rec['idle'] += 1
+    out = sorted(agg.values(), key=lambda r: (-r['count'], r['machine']))
+    return {'machines':out,'machine_types':len(out),
+            'total_machines':sum(r['count'] for r in out),
+            'note':'Every placed processing machine by type. state: ready = product waiting to '
+                   'collect, working = currently processing, idle = empty and ready to load. '
+                   'Storage (chests - see the chests tool) and decorative craftables are excluded. '
+                   'Casks (cellar aging) count. For just the collectable output use machines_ready.'}
+
 def crops_ready(root):
     """Count of crops fully grown / ready to harvest in tilled soil."""
     ready = 0; growing = 0

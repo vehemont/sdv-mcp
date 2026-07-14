@@ -330,6 +330,15 @@ def processing(save_path: SavePath = "") -> dict:
     root, _ = _resolve(save_path); return P.processing(root)
 
 @mcp.tool()
+def machines(save_path: SavePath = "") -> dict:
+    """Inventory of every placed processing machine (Furnace, Keg, Cask, Seed Maker,
+    Charcoal Kiln, Tapper, Bee House, Preserves Jar, etc.) grouped by type with counts
+    and state (ready / working / idle). Excludes chests and decorative craftables.
+    Use this to answer 'what/how many machines do I have'; machines_ready shows only
+    machines with output ready to collect right now."""
+    root, _ = _resolve(save_path); return P.machines(root)
+
+@mcp.tool()
 def feed(save_path: SavePath = "") -> dict:
     """Animal feed status: animals, silo hay, fiber, and days of feed covered."""
     root, _ = _resolve(save_path); return P.feed(root)

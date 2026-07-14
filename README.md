@@ -1,6 +1,6 @@
 # sdv-mcp
 
-This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 46 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
+This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 47 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
 
 > [!CAUTION]
 > This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Then once you feel comfortable, you can point it at your real save to receive the save-per-night updates. 
@@ -111,6 +111,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 |------|------|
 | `inventory` | Backpacks + chests. `full=True` = all items; `by_container=True` = per-chest |
 | `processing` | Held crops grouped fruit/veg/special by the save's own item category |
+| `machines` | Inventory of placed machines (Furnace, Keg, Cask, Seed Maker, Kiln, Tapper, ...) by type with counts + state (ready/working/idle) |
 | `chests` | Every container: type (Chest/Stone/Big/special), map + tile, color, contents |
 | `find_item` | Where is X? Searches backpacks, chests, machine outputs. Map + tile + color |
 | `net_worth` | Gold + sellable value of everything held (from each item's own price) |
@@ -161,7 +162,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 - `sdv_parser.py` — the read-only save parser (ElementTree)
 - `sdv_wiki.py` — MediaWiki Action API client (api.php; the wiki's rest.php returns empty, so Action API it is), cached + rate-limited
 - `sdv_calc.py` — the calculators + reference tables
-- `sdv_mcp_server.py` — the 46 tools
+- `sdv_mcp_server.py` — the 47 tools
 
 ## Known limits
 - Vanilla + whatever the wiki documents only. Modded content lives on separate wikis.
