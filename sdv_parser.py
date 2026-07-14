@@ -475,6 +475,56 @@ def perfection(root):
                    'Forage collection set). Great Friends: datable max 8 hearts, others 10. In co-op, '
                    'Farmer Level/Stardrops/Great Friends differ per player - see per_player.'}
 
+# Level-5 profession forks per skill (the level-10 fork depends on the level-5 pick).
+_SKILL5_PROFS = {'farming':'Rancher vs Tiller','fishing':'Fisher vs Trapper',
+                 'foraging':'Forester vs Gatherer','mining':'Miner vs Geologist',
+                 'combat':'Fighter vs Scout'}
+
+def _skill_goals(root):
+    """Every non-maxed skill across players, sorted by XP remaining to next level,
+    annotated with what that next level unlocks (profession forks at 5 & 10)."""
+    rows = []
+    for p in players(root):
+        for sk, xp_to in p['xp_to_next_level'].items():
+            lvl = p['levels'][sk]; nxt = lvl + 1
+            if nxt == 5:
+                unlocks = f"profession choice ({_SKILL5_PROFS.get(sk,'')})"
+            elif nxt == 10:
+                unlocks = "second (specialisation) profession"
+            else:
+                unlocks = "new crafting/cooking recipes"
+            rows.append({'player':p['name'],'skill':sk,'level':lvl,'next_level':nxt,
+                         'xp_to_next':xp_to,'unlocks':unlocks})
+    rows.sort(key=lambda r: r['xp_to_next'])
+    return rows
+
+def next_goals(root):
+    """Prioritised 'closest wins' toward the big collections/perfection, so a caller
+    can suggest the most efficient next steps rather than only daily chores."""
+    cc = community_center(root); mus = museum(root); perf = perfection(root)
+    joja = 'JojaMember' in _mail(root)
+    closest_bundles = sorted(cc['incomplete_bundles'], key=lambda b: b['need_count'])[:3]
+    near_perf = sorted((b for b in perf['breakdown'] if not b['complete']),
+                       key=lambda b: b['remaining'])
+    return {
+        'perfection_pct': perf['perfection_pct'],
+        'skills_closest_to_level_up': _skill_goals(root)[:3],
+        'museum': {'donated': mus['donated'], 'total': mus['total'],
+                   'next_milestone': mus['next_milestone']},
+        'community_center': {
+            'route': 'Joja (bought memberships)' if joja else 'Community Center (bundles)',
+            'rooms_left': cc['rooms_left'],
+            'bundles_incomplete': len(cc['incomplete_bundles']),
+            'closest_bundles': closest_bundles},
+        'perfection_nearest_categories': [
+            {'category': b['category'], 'have': b['have'], 'of': b['of'],
+             'remaining': b['remaining'], 'weight_pct': b['weight_pct']}
+            for b in near_perf[:4]],
+        'note': 'Closest milestones only (full detail via perfection, community_center, '
+                'museum, missing_recipes, bundle_sourcing). Prioritise low xp_to_next skills '
+                '(especially next_level 5/10 for a profession), bundles with the fewest items '
+                'remaining, and perfection categories with the smallest remaining count.'}
+
 def missing_recipes(root):
     """Per player: cooking + crafting recipes LEARNED but not yet made (actionable
     now), with known/made counts vs the perfection totals. Recipes not yet learned
@@ -986,16 +1036,19 @@ def daily_briefing(root):
             'open_quests':open_quests,
             'active_special_orders':active_orders,
             'festivals_next_7_days':fests,
+            'next_goals':next_goals(root),
             'machines_ready':{'total':sum(m['count'] for m in mr),'breakdown':mr},
             'crops_ready_to_harvest':cr['ready'],
             'animals_to_pet':unpet,'total_animals':len(animals),
-            'note':'Morning digest read from the save. Prioritise the time-sensitive, non-routine '
-                   'items: give a birthday villager a gift from `give_from_inventory` (or acquire '
-                   'one from `loved_gift_ideas`) for +8x friendship, and progress `open_quests` / '
-                   '`active_special_orders` before their deadlines - these are the real tasks. '
-                   'Machines/petting/harvest are the routine daily chores. For longer-term goals '
-                   'the caller should consult bundle_sourcing, missing_recipes, special_orders, '
-                   'perfection and golden_walnuts and weave them into a plan.'}
+            'note':'Morning digest read from the save. Build a prioritised plan: (1) time-sensitive '
+                   'social - give a birthday villager a gift from `give_from_inventory` (or acquire '
+                   'one from `loved_gift_ideas`) for +8x friendship, and hit festivals; (2) real '
+                   'tasks - progress `open_quests`/`active_special_orders` before their deadlines; '
+                   '(3) efficient progression - use `next_goals` to push the nearest wins (a skill '
+                   'a few XP from a profession, a bundle needing 1-2 items, the closest perfection '
+                   'categories/museum milestone). Machines/petting/harvest are routine chores. For '
+                   'deeper detail call perfection, community_center, museum, missing_recipes, '
+                   'bundle_sourcing, special_orders and golden_walnuts.'}
 
 # ======================= container location tools =========================
 # playerChoiceColor RGB -> the in-game chest color name (the 20-color wheel).

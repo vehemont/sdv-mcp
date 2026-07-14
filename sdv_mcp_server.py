@@ -638,8 +638,9 @@ def daily_briefing(save_path: SavePath = "") -> dict:
     """One-call morning digest from the save: date, daily luck, upcoming birthdays
     with the exact loved gift to give (from your inventory) or ideas to acquire +
     current hearts, open quests and active special orders with objectives/deadlines
-    (the real tasks), festivals in the next 7 days, and the routine chores (machines
-    ready, crops ready, animals to pet)."""
+    (the real tasks), festivals in the next 7 days, next_goals (closest progression
+    wins: skills near a level/profession, nearest bundles, museum milestone and
+    perfection categories), and the routine chores (machines, crops, animals to pet)."""
     root, _ = _resolve(save_path); return P.daily_briefing(root)
 
 @mcp.tool()
