@@ -948,21 +948,54 @@ def daily_briefing(root):
         s = SEASON_ORDER[(s_idx-1)//28 % 4]; dd = (s_idx-1)%28 + 1
         if (s,dd) in FESTIVALS:
             fests.append({'in_days':d,'date':f"{s.title()} {dd}",'festival':FESTIVALS[(s,dd)]})
+    def birthday_entry(v):
+        # Name the exact gift so the caller can act, not just a yes/no flag.
+        on_hand = v['loved_in_inventory']
+        return {'villager':v['villager'],'in_days':v['days_until_birthday'],
+                'hearts':v['hearts'],
+                'give_from_inventory':on_hand,             # loved gifts you ALREADY hold
+                'have_loved_gift':bool(on_hand),
+                'loved_gift_ideas':v['loved_gifts'][:5]}   # options to buy/make if you have none
+    upcoming_b = [birthday_entry(v) for v in bd['upcoming_birthdays']]
     mr = machines_ready(root); cr = crops_ready(root)
     animals = farm_animals(root)
     unpet = sum(1 for a in animals if a.find('wasPet') is not None and a.find('wasPet').text=='false')
+    # Real, non-routine tasks: accepted-but-unfinished quests and active special orders.
+    qd = quests(root)
+    open_quests = []
+    for p in qd['players']:
+        for q in p['quests']:
+            if q.get('completed') or not q.get('accepted'):
+                continue
+            item = {'player':p['player'],'title':q.get('title'),'type':q.get('type'),
+                    'objective':q.get('objective'),'reward_gold':q.get('reward_gold'),
+                    'days_left':q.get('days_left') or None}
+            if q.get('required_item'):
+                item['need'] = f"{q.get('required_count',1)}x {q['required_item']}"
+                item['on_hand'] = q.get('on_hand')
+                item['completable_now'] = q.get('completable_now')
+            open_quests.append(item)
+    active_orders = [{'key':o['key'],'requester':o['requester'],
+                      'due_day_of_year':o['due_day_of_year'],
+                      'objectives':o['objectives'],'reward_gold':o['reward_gold']}
+                     for o in qd['special_orders']['active']]
     return {'date':f"{season.title()} {day}, Year {ov['date']['year']}",
             'daily_luck':{'value':luck,'assessment':luck_txt},
             'birthdays_today':today_bd,
-            'upcoming_birthdays':[{'villager':v['villager'],'in_days':v['days_until_birthday'],
-                                   'have_loved_gift':bool(v['loved_in_inventory'])}
-                                  for v in bd['upcoming_birthdays']],
+            'upcoming_birthdays':upcoming_b,
+            'open_quests':open_quests,
+            'active_special_orders':active_orders,
             'festivals_next_7_days':fests,
             'machines_ready':{'total':sum(m['count'] for m in mr),'breakdown':mr},
             'crops_ready_to_harvest':cr['ready'],
             'animals_to_pet':unpet,'total_animals':len(animals),
-            'note':'Everything read from the save. Pet animals + collect machines daily; '
-                   'gift birthday villagers a loved item for +8x friendship.'}
+            'note':'Morning digest read from the save. Prioritise the time-sensitive, non-routine '
+                   'items: give a birthday villager a gift from `give_from_inventory` (or acquire '
+                   'one from `loved_gift_ideas`) for +8x friendship, and progress `open_quests` / '
+                   '`active_special_orders` before their deadlines - these are the real tasks. '
+                   'Machines/petting/harvest are the routine daily chores. For longer-term goals '
+                   'the caller should consult bundle_sourcing, missing_recipes, special_orders, '
+                   'perfection and golden_walnuts and weave them into a plan.'}
 
 # ======================= container location tools =========================
 # playerChoiceColor RGB -> the in-game chest color name (the 20-color wheel).

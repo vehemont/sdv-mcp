@@ -635,9 +635,11 @@ def fishing_xp_forecast(
 # ============================ player-life tools ============================
 @mcp.tool()
 def daily_briefing(save_path: SavePath = "") -> dict:
-    """One-call morning digest from the save: date, daily luck, birthdays today +
-    upcoming (and whether you hold a loved gift), festivals in the next 7 days,
-    machines ready to collect, crops ready to harvest, and animals still to pet."""
+    """One-call morning digest from the save: date, daily luck, upcoming birthdays
+    with the exact loved gift to give (from your inventory) or ideas to acquire +
+    current hearts, open quests and active special orders with objectives/deadlines
+    (the real tasks), festivals in the next 7 days, and the routine chores (machines
+    ready, crops ready, animals to pet)."""
     root, _ = _resolve(save_path); return P.daily_briefing(root)
 
 @mcp.tool()
