@@ -123,7 +123,21 @@ def relax_output_schemas():
         for prop in schema.get("properties", {}).values():
             _make_property_nullable(prop)
 
-mcp = FastMCP("sdv-mcp")
+INSTRUCTIONS = """sdv-mcp reads a configured Stardew Valley save (read-only) and can verify game facts against the Stardew Valley Wiki.
+
+General workflow:
+- Answer from the SAVE first (inventory, quests, machines, buildings, friendships, perfection, ...). The save is the source of truth for THIS player's state and auto-loads the newest in-game day.
+- Use the WIKI tools to verify game facts or look up things not in the save (prices, drop sources, recipes, event schedules).
+
+How to use the wiki efficiently (important):
+- If you already know the item/NPC/event name, do NOT use wiki_search. Call how_to_obtain("Item"), wiki_infobox("Exact Name"), or wiki_page("Exact Name") directly - the wiki is one page per topic and these follow redirects.
+- Page titles are Capitalized and usually singular, e.g. "Rhubarb Seeds", "Sturgeon", "Stardrop". An item's main page usually also covers its seeds/products (the "Rhubarb" page lists seed price and shop).
+- Use wiki_search ONLY to discover an unknown title, and search the NOUN in 1-3 words (e.g. "Rhubarb" or "Rhubarb Seeds") - never a natural-language question like "rhubarb seeds cost price seed shop". Then open the best result with how_to_obtain/wiki_infobox/wiki_page.
+- For "how do I get X" / "where do I buy X" / "how much is X", prefer how_to_obtain("X"): it returns the acquisition summary plus the infobox (price/season/source) in a single call.
+- Before recommending a location-gated method (Desert Trader, Krobus, Skull Cavern, Ginger Island, Casino), check reachability with the `unlocks` tool.
+"""
+
+mcp = FastMCP("sdv-mcp", instructions=INSTRUCTIONS)
 
 # ---- reusable annotated parameter types -----------------------------------
 SavePath = Annotated[str, Field(description="Path to a save file OR a save folder (e.g. .../Saves/Farm_123 "
@@ -445,9 +459,12 @@ def full_report(save_path: SavePath = "") -> dict:
 
 # ============================ wiki verification ============================
 @mcp.tool()
-def wiki_search(query: Annotated[str, Field(description="Search terms, e.g. 'sturgeon' or 'squid fest'.")],
+def wiki_search(query: Annotated[str, Field(description="A short topic NOUN of 1-3 words, e.g. 'Rhubarb' or 'Squid Fest' - NOT a natural-language question like 'rhubarb seeds cost price'.")],
                 limit: Annotated[int, Field(description="Max results.", ge=1, le=20)] = 6) -> dict:
-    """Full-text search the Stardew Valley Wiki (titles + snippets)."""
+    """Find a wiki page TITLE when you don't already know it. Search the item/NPC/event
+    noun in 1-3 words, then open the best result with how_to_obtain/wiki_infobox/wiki_page.
+    If you already know the name, skip this and call those tools directly (they follow
+    redirects). For 'how to get / where to buy / price of X', prefer how_to_obtain(X)."""
     return WIKI.search(query, limit=limit)
 
 @mcp.tool()
@@ -551,6 +568,20 @@ def sprinkler_plan(
     """Sprinklers + materials to water `tiles`, and whether the save's bars can build them."""
     root, _ = _resolve(save_path)
     return CALC.sprinkler_plan(root, tiles, sprinkler=sprinkler)
+
+@mcp.tool()
+def build_planner(
+    spec: Annotated[str, Field(description="Machines to build, e.g. '20 Keg, 5 Tapper' or '20 kegs'.")],
+    save_path: SavePath = "",
+    furnaces: Annotated[int, Field(description="Furnaces available, to estimate parallel smelting time.", ge=1)] = 1,
+    tappers: Annotated[int, Field(description="Spare tappers available, to estimate resin/syrup gathering time.", ge=1)] = 1,
+) -> dict:
+    """Total materials to craft a set of machines, with bars rolled down to ore + coal +
+    furnace-time and tapper products (Oak Resin, Maple Syrup, Pine Tar) rolled down to
+    tapper-nights, then compared against the save's inventory (still_needed). Answers
+    'what do I need to build 20 kegs + 5 tappers, and how much ore/coal/furnace time?'"""
+    root, _ = _resolve(save_path)
+    return CALC.build_planner(root, spec, furnaces=furnaces, tappers=tappers)
 
 @mcp.tool()
 def processing_value(

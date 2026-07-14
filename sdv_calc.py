@@ -6,6 +6,7 @@ flagged, rather than guessed.
 """
 from __future__ import annotations
 import math
+import re
 from collections import Counter
 import sdv_parser as P
 
@@ -248,6 +249,112 @@ def sprinkler_plan(root, tiles, sprinkler='Quality'):
             'buildable_now':buildable,'shortfall':{m:v for m,v in shortfall.items() if v},
             'note':'Coverage: Basic 4 (adjacent), Quality 8 (surrounding), Iridium 24 (5x5). '
                    'Pressure Nozzle doubles coverage. Bars require ore + coal in a furnace.'}
+
+# ---- 5b. build planner ---------------------------------------------------
+# Verified vanilla crafting recipes (ingredient -> qty). Sources: Stardew Valley Wiki.
+BUILD_RECIPES = {
+ 'Keg': {'Wood':30,'Copper Bar':1,'Iron Bar':1,'Oak Resin':1},
+ 'Cask': {'Wood':20,'Hardwood':1},
+ 'Tapper': {'Wood':40,'Copper Bar':2},
+ 'Preserves Jar': {'Wood':50,'Stone':40,'Coal':8},
+ 'Bee House': {'Wood':40,'Coal':8,'Iron Bar':1,'Maple Syrup':1},
+ 'Furnace': {'Copper Ore':20,'Stone':25},
+ 'Charcoal Kiln': {'Wood':20,'Copper Bar':2},
+ 'Cheese Press': {'Wood':45,'Stone':45,'Hardwood':10,'Copper Bar':1},
+ 'Mayonnaise Machine': {'Wood':15,'Stone':15,'Earth Crystal':1,'Copper Bar':1},
+ 'Oil Maker': {'Slime':50,'Hardwood':20,'Gold Bar':1},
+ 'Crab Pot': {'Wood':40,'Iron Bar':3},
+ 'Sprinkler': {'Copper Bar':1,'Iron Bar':1},
+ 'Quality Sprinkler': {'Iron Bar':1,'Gold Bar':1,'Refined Quartz':1},
+ 'Iridium Sprinkler': {'Gold Bar':1,'Iridium Bar':1,'Battery Pack':1},
+}
+# bar/refined -> smelting recipe (ore + coal + furnace minutes). Verified vs wiki.
+SMELT = {
+ 'Copper Bar':  {'ore':'Copper Ore','ore_qty':5,'coal':1,'minutes':30},
+ 'Iron Bar':    {'ore':'Iron Ore','ore_qty':5,'coal':1,'minutes':120},
+ 'Gold Bar':    {'ore':'Gold Ore','ore_qty':5,'coal':1,'minutes':300},
+ 'Iridium Bar': {'ore':'Iridium Ore','ore_qty':5,'coal':1,'minutes':480},
+ 'Refined Quartz': {'ore':'Quartz','ore_qty':1,'coal':1,'minutes':90},
+}
+# tapper product -> nights per unit (one tapper yields one unit per cycle). Verified vs wiki.
+TAP_NIGHTS = {'Oak Resin':7,'Maple Syrup':9,'Pine Tar':5,'Mystic Syrup':7}
+
+def _match_machine(name):
+    n = re.sub(r'\s+', ' ', name.strip().lower())
+    cands = {n, n.rstrip('s'), n[:-2] if n.endswith('es') else n,
+             n[:-3]+'y' if n.endswith('ies') else n}
+    for k in BUILD_RECIPES:
+        if k.lower() in cands:
+            return k
+    return None
+
+def build_planner(root, spec, furnaces=1, tappers=1):
+    """Total materials to build a set of machines, rolling bars down to ore+coal+furnace
+    time and tapper products down to tapper-nights, and comparing against the save's
+    inventory. `spec` like '20 Keg, 5 Tapper' or '20 kegs'."""
+    targets = []; unknown = []
+    for part in re.split(r'[,;]|\band\b', spec or ''):
+        part = part.strip()
+        if not part:
+            continue
+        m = re.match(r'(\d+)\s*x?\s*(.+)', part)
+        if not m:
+            unknown.append(part); continue
+        cnt = int(m.group(1)); mm = _match_machine(m.group(2))
+        (targets.append((mm, cnt)) if mm else unknown.append(part))
+    if not targets:
+        return {'error': 'no recognized machines in spec',
+                'recognized_machines': sorted(BUILD_RECIPES), 'unknown': unknown}
+
+    direct = Counter()
+    for mm, cnt in targets:
+        for mat, q in BUILD_RECIPES[mm].items():
+            direct[mat] += q * cnt
+
+    smelt = []; total_coal = 0; total_min = 0
+    raw = Counter(); tapping = []
+    for mat, q in direct.items():
+        if mat in SMELT:
+            s = SMELT[mat]
+            raw[s['ore']] += s['ore_qty'] * q
+            total_coal += s['coal'] * q
+            total_min += s['minutes'] * q
+            smelt.append({'bar': mat, 'count': q, 'ore': s['ore'],
+                          'ore_needed': s['ore_qty'] * q, 'coal': s['coal'] * q,
+                          'minutes_each': s['minutes'], 'total_minutes': s['minutes'] * q})
+        elif mat in TAP_NIGHTS:
+            d = TAP_NIGHTS[mat]
+            tapping.append({'product': mat, 'count': q, 'nights_per_unit': d,
+                            'nights_with_1_tapper': d * q,
+                            'nights_with_current_tappers': math.ceil(d * q / max(1, tappers))})
+            raw[mat] += q
+        else:
+            raw[mat] += q
+    if total_coal:
+        raw['Coal'] += total_coal
+
+    held = P._combined_inventory(root)
+    on_hand = {m: held.get(m, 0) for m in raw}
+    still = {m: max(0, raw[m] - held.get(m, 0)) for m in raw}
+    return {
+        'targets': [{'machine': m, 'count': c} for m, c in targets],
+        'unknown': unknown,
+        'direct_ingredients': dict(sorted(direct.items())),
+        'smelting': {'bars': smelt, 'total_coal_for_smelting': total_coal,
+                     'total_furnace_minutes': total_min,
+                     'total_furnace_hours': round(total_min / 60, 1),
+                     'furnaces_assumed': furnaces,
+                     'sequential_hours_per_furnace': round(total_min / 60 / max(1, furnaces), 1)},
+        'tapping': tapping,
+        'raw_resources_total': dict(sorted(raw.items())),
+        'on_hand': on_hand,
+        'still_needed': {m: v for m, v in sorted(still.items()) if v},
+        'note': 'Materials to CRAFT the listed machines (not to buy). Bars are expanded to '
+                'ore + coal + furnace time (Copper 30m, Iron 2h, Gold 5h, Iridium 8h, Refined '
+                'Quartz 90m; 1 coal per smelt). Tapper products expand to nights on a tree '
+                '(Oak Resin 7, Maple Syrup 9, Pine Tar 5). raw_resources_total is the fully '
+                'reduced shopping list; still_needed subtracts what the save already holds. '
+                'furnace time assumes sequential smelting; divide by more furnaces to parallelise.'}
 
 # ---- 6. processing value comparison --------------------------------------
 def processing_value(root, item, base_price=None, kind=None, quality='normal', artisan=None):

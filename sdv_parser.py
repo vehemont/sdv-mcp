@@ -1001,20 +1001,56 @@ def _excluded_cellar_object_ids(root):
                 skip.add(id(o))
     return excluded, skip
 
-def machines_ready(root):
-    """Placed machines whose product is ready to collect (name, product, count)."""
-    from collections import Counter
-    ready = Counter()
+def _obj_tile(o):
+    """(x, y) integer tile of a placed object, or None."""
+    tl = o.find('tileLocation')
+    if tl is None:
+        return None
+    x = tl.findtext('X'); y = tl.findtext('Y')
+    try:
+        return int(float(x)), int(float(y))
+    except (TypeError, ValueError):
+        return None
+
+def _iter_placed_objects(root):
+    """Yield (location_name, Object) for objects actually placed in accessible locations.
+
+    Covers both outdoor/named maps (<GameLocation>) and building interiors (<indoors>:
+    cabins, coops, barns, sheds, etc.), reading each container's own <objects> so nothing
+    nested double-counts. Skips phantom/locked cellars and machines merely stored inside
+    chests (those aren't placed in the world)."""
+    import itertools
     _, skip = _excluded_cellar_object_ids(root)
-    for o in root.iter('Object'):
-        if id(o) in skip:
+    for loc in itertools.chain(root.iter('GameLocation'), root.iter('indoors')):
+        nm = loc.findtext('name') or '?'
+        objs = loc.find('objects')
+        if objs is None:
             continue
+        for item in objs.findall('item'):
+            o = item.find('value/Object')
+            if o is None or id(o) in skip:
+                continue
+            yield nm, o
+
+def machines_ready(root):
+    """Placed machines whose product is ready to collect, grouped by machine + product +
+    location, with a count and the tile coordinates so collection is actionable."""
+    groups = {}
+    for loc_name, o in _iter_placed_objects(root):
         rfh = o.find('readyForHarvest')
-        if rfh is not None and rfh.text == 'true':
-            held = o.find('heldObject'); mn = o.find('name')
-            hn = held.find('name') if held is not None else None
-            ready[(mn.text if mn is not None else '?', hn.text if hn is not None else '?')] += 1
-    return [{'machine':m,'product':p,'count':c} for (m,p),c in ready.most_common()]
+        if rfh is None or rfh.text != 'true':
+            continue
+        mn = o.findtext('name') or '?'
+        held = o.find('heldObject')
+        hn = held.findtext('name') if held is not None else None
+        key = (mn, hn or '?', loc_name)
+        rec = groups.setdefault(key, {'machine':mn,'product':hn or '?','location':loc_name,
+                                      'count':0,'tiles':[]})
+        rec['count'] += 1
+        tile = _obj_tile(o)
+        if tile is not None:
+            rec['tiles'].append(f'{tile[0]},{tile[1]}')
+    return sorted(groups.values(), key=lambda r: (-r['count'], r['location'], r['machine']))
 
 # bigCraftables that are storage or decorative rather than processing machines.
 NON_MACHINE_CRAFTABLES = {
@@ -1031,10 +1067,9 @@ def machines(root):
     ready (output waiting), working (processing now), idle (empty, ready to load).
     Storage (chests) and decorative craftables are excluded."""
     agg = {}
-    excluded_cellars, skip = _excluded_cellar_object_ids(root)
-    for o in root.iter('Object'):
-        if id(o) in skip:
-            continue
+    loc_agg = {}
+    excluded_cellars, _ = _excluded_cellar_object_ids(root)
+    for loc_name, o in _iter_placed_objects(root):
         bc = o.find('bigCraftable')
         if bc is None or bc.text != 'true':
             continue
@@ -1043,6 +1078,9 @@ def machines(root):
             continue
         rec = agg.setdefault(name, {'machine':name,'count':0,'ready':0,'working':0,'idle':0})
         rec['count'] += 1
+        loc = loc_agg.setdefault(loc_name, {'location':loc_name,'total':0,'by_type':{}})
+        loc['total'] += 1
+        loc['by_type'][name] = loc['by_type'].get(name, 0) + 1
         mins = o.findtext('minutesUntilReady')
         mins = int(mins) if mins and mins.lstrip('-').isdigit() else 0
         held = o.find('heldObject') is not None
@@ -1053,10 +1091,13 @@ def machines(root):
         else:
             rec['idle'] += 1
     out = sorted(agg.values(), key=lambda r: (-r['count'], r['machine']))
-    note = ('Every accessible placed processing machine by type. state: ready = product '
-            'waiting to collect, working = currently processing, idle = empty and ready to '
-            'load. Storage (chests - see the chests tool) and decorative craftables are '
-            'excluded. For just the collectable output use machines_ready.')
+    by_location = sorted(loc_agg.values(), key=lambda r: (-r['total'], r['location']))
+    note = ('Every accessible placed processing machine by type, plus a by_location '
+            'breakdown (which map each machine sits in). state: ready = product waiting to '
+            'collect, working = currently processing, idle = empty and ready to load. '
+            'Storage (chests - see the chests tool) and decorative craftables are excluded, '
+            'as are machines merely stored inside chests. For the collectable output with '
+            'tile coordinates use machines_ready.')
     if excluded_cellars:
         note += (f' NOTE: {excluded_cellars} cellar(s) in this save are NOT counted because '
                  'they are not unlocked (no player has upgraded their house to level 3, which '
@@ -1065,6 +1106,7 @@ def machines(root):
                  'are not actually accessible in-game, so their casks are excluded here.')
     return {'machines':out,'machine_types':len(out),
             'total_machines':sum(r['count'] for r in out),
+            'by_location':by_location,
             'inaccessible_cellars_excluded':excluded_cellars,
             'note':note}
 
@@ -1475,7 +1517,7 @@ _OBJECTIVE_VERB = {'DeliverObjective':'Deliver','CollectObjective':'Collect',
  'GiftObjective':'Gift','JKScoreObjective':'Arcade score','ReachMineFloorObjective':'Reach mine floor',
  'DonateObjective':'Donate','ExploreAreaObjective':'Explore','GiftLoveObjective':'Give loved gift'}
 
-def _ctx_tag_to_item(tag):
+def _ctx_tag_to_item(tag, id2name=None):
     """Turn an objective context tag into a readable item hint. 'item_ectoplasm'
     -> 'ectoplasm'; 'id_o_141' -> resolved item name or '#141'; else the raw tag."""
     if not tag:
@@ -1484,14 +1526,15 @@ def _ctx_tag_to_item(tag):
     out = []
     for t in parts:
         if t.startswith('id_o_'):
-            iid = t[5:]; out.append(ITEM.get(iid, f'#{iid}'))
+            iid = t[5:]
+            out.append(ITEM.get(iid) or (id2name.get(iid) if id2name else None) or f'#{iid}')
         elif t.startswith('item_'):
             out.append(t[5:].replace('_', ' '))
         else:
             out.append(t)
     return ', '.join(out)
 
-def _special_orders(root):
+def _special_orders(root, id2name=None):
     """Parse the special-orders board: active (accepted), available, and completed.
     Includes each order's objectives with progress (currentCount/maxCount), the item
     hint from its context tags, and rewards. Names/descriptions in the save are
@@ -1510,7 +1553,7 @@ def _special_orders(root):
         return {'type': _OBJECTIVE_VERB.get(ob.get(XSI_TYPE), ob.get(XSI_TYPE)),
                 'progress': int(_t(ob, 'currentCount') or 0),
                 'required': int(_t(ob, 'maxCount') or 0),
-                'item': _ctx_tag_to_item(_t(ob, 'acceptableContextTagSets')),
+                'item': _ctx_tag_to_item(_t(ob, 'acceptableContextTagSets'), id2name),
                 'target': _t(ob, 'targetName')}
     def parse(o):
         name = _t(o, 'questName'); desc = _t(o, 'questDescription')
@@ -1547,7 +1590,7 @@ def quests(root):
         qs = [_quest_fields(q, by_name, by_id, id2name) for q in qlog.findall('Quest')] if qlog is not None else []
         players_out.append({'player': _t(p,'name'), 'quest_count': len(qs), 'quests': qs})
     return {'players': players_out,
-            'special_orders': _special_orders(root),
+            'special_orders': _special_orders(root, id2name),
             'note': "completable_now = the requested item is on hand (across all "
                     "backpacks + chests) in the required quantity; you still have to "
                     "hand it in. Monster/fishing/socialize quests track progress "

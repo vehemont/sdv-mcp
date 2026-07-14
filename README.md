@@ -1,6 +1,6 @@
 # sdv-mcp
 
-This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 48 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
+This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 49 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
 
 > [!CAUTION]
 > This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Then once you feel comfortable, you can point it at your real save to receive the save-per-night updates. 
@@ -113,7 +113,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 |------|------|
 | `inventory` | Backpacks + chests. `full=True` = all items; `by_container=True` = per-chest |
 | `processing` | Held crops grouped fruit/veg/special by the save's own item category |
-| `machines` | Inventory of placed machines (Furnace, Keg, Cask, Seed Maker, Kiln, Tapper, ...) by type with counts + state (ready/working/idle) |
+| `machines` | Inventory of placed machines (Furnace, Keg, Cask, Seed Maker, Kiln, Tapper, ...) by type with counts + state (ready/working/idle) + a by-location breakdown |
 | `buildings` | Farm buildings + per-player farmhouse upgrades: barn/coop tiers, animal capacity vs occupancy, silo/stable/mill/greenhouse/obelisks, cellar & kitchen unlock status |
 | `chests` | Every container: type (Chest/Stone/Big/special), map + tile, color, contents |
 | `find_item` | Where is X? Searches backpacks, chests, machine outputs. Map + tile + color |
@@ -132,7 +132,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `perfection` | Real weighted Perfection %: 11 categories, each with have/total + earned %. 1.6-accurate (Farmer Level = player.Level/25) + per-player co-op breakdown |
 | `daily_briefing` | Morning digest: luck, birthdays, festivals, machines/crops ready, pets due |
 | `gift_helper` | Birthdays (from save) + your hearts + loved gifts, flags what you already hold |
-| `ready_to_collect` | Machines with product ready + crops ready to harvest |
+| `ready_to_collect` | Machines with product ready (name, product, location + tile) + crops ready to harvest |
 | `fish_available` | Fish catchable now (season/weather/time), `only_uncaught` filters |
 | `mods` | Detect mods; list what couldn't map to vanilla (modded ids, unmapped bundle/museum) |
 
@@ -146,6 +146,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `crop_planner` | Crops that mature in the window + profit/tile (`quality_weighted` optional) |
 | `crop_quality_odds` | Gold/silver/normal/iridium % from farming level + fertilizer + food buff |
 | `sprinkler_plan` | Sprinklers + materials for N tiles, and whether your bars can build them |
+| `build_planner` | Total materials to craft a set of machines (e.g. '20 Keg, 5 Tapper'), with bars rolled down to ore + coal + furnace-time and resin/syrup to tapper-nights, vs your inventory |
 | `fish_pond_forecast` | Days to fill a pond to capacity + roe notes |
 | `friendship_forecast` | Loved gifts + weeks to a target heart level |
 | `animal_product_quality` | Iridium/gold/silver produce odds per animal (friendship + mood + prof) |
@@ -165,7 +166,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 - `sdv_parser.py` — the read-only save parser (ElementTree)
 - `sdv_wiki.py` — MediaWiki Action API client (api.php; the wiki's rest.php returns empty, so Action API it is), cached + rate-limited
 - `sdv_calc.py` — the calculators + reference tables
-- `sdv_mcp_server.py` — the 48 tools
+- `sdv_mcp_server.py` — the 49 tools
 
 ## Known limits
 - Vanilla + whatever the wiki documents only. Modded content lives on separate wikis.
