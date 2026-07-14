@@ -19,6 +19,8 @@ Example questions that utilize the state of your save, tailoring responses to yo
 
 > "Where is the chest that has the pearl I need to gift to Clint?"
 
+> "How many sprinklers will I need to water all my Cauliflower seeds I have?"
+
 ## Requirements
 - Python 3.10+
 - `pip install -r requirements.txt` (just the `mcp` SDK; wiki client uses stdlib `urllib`)
@@ -167,5 +169,6 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 ## Known limits
 - Vanilla + whatever the wiki documents only. Modded content lives on separate wikis.
 - `missing_recipes` lists recipes you've *learned* but not made; recipes not yet learned show only as a count (they aren't in the save). `shipping_tracker` lists what you've shipped by name — a by-name "still to ship" list isn't modelled (the save only stores what shipped), so its remaining count is approximate vs the 154-item set.
-- `quests`: `completable_now` covers item delivery/harvest/resource quests (you still hand the item in); monster/fishing/socialize quests report progress counters instead. Special-order item objectives aren't fully modelled. Item ids missing from the local name table show as `#id` — use `research=True` or the wiki tools to identify them.
-at- Wiki tools need outbound network. The save tools don't.
+- `quests`: `completable_now` covers item delivery/harvest/resource quests (you still hand the item in); monster/fishing/socialize quests report progress counters instead. Special-order item objectives aren't fully modelled.
+- Item names come from a bundled catalog (`sdv_items.py`) generated from the game's unpacked assets, plus a fallback that resolves anything present in your save. Regenerate for a new game version with `python scripts/gen_items.py`.
+- Wiki tools need outbound network. The save tools don't.

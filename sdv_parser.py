@@ -90,7 +90,28 @@ ITEM = {'24':'Parsnip','16':'Wild Horseradish','18':'Daffodil','20':'Leek','22':
  '536':'Frozen Geode','128':'Pufferfish','130':'Tuna','131':'Sardine','132':'Bream',
  '136':'Largemouth Bass','140':'Walleye','142':'Carp','143':'Catfish','145':'Sunfish',
  '148':'Eel','150':'Red Snapper','156':'Ghostfish','164':'Sandfish','698':'Sturgeon',
- '699':'Tiger Trout','700':'Bullhead','701':'Tilapia','706':'Shad','734':'Woodskip'}
+ '699':'Tiger Trout','700':'Bullhead','701':'Tilapia','706':'Shad','734':'Woodskip',
+ # fish (ocean/river/lake), crab-pot catches, bars, gems and common quest items
+ '129':'Anchovy','137':'Smallmouth Bass','138':'Rainbow Trout','139':'Salmon','141':'Perch',
+ '144':'Pike','146':'Red Mullet','147':'Herring','149':'Octopus','151':'Squid',
+ '154':'Sea Cucumber','155':'Super Cucumber','158':'Stonefish','161':'Ice Pip','162':'Lava Eel',
+ '267':'Flounder','269':'Midnight Carp','704':'Dorado','705':'Albacore','707':'Lingcod',
+ '708':'Halibut','715':'Lobster','716':'Crayfish','717':'Crab','719':'Mussel','720':'Shrimp',
+ '721':'Snail','722':'Periwinkle','723':'Oyster',
+ '334':'Copper Bar','335':'Iron Bar','336':'Gold Bar','337':'Iridium Bar','338':'Refined Quartz',
+ '60':'Emerald','64':'Ruby','66':'Amethyst','68':'Topaz','70':'Jade','72':'Diamond',
+ '74':'Prismatic Shard','80':'Quartz','82':'Fire Quartz','84':'Frozen Tear','86':'Earth Crystal',
+ '227':'Sashimi','226':'Spaghetti','728':'Fish Stew','787':'Battery Pack','789':'Lucky Purple Shorts'}
+
+# Merge the bundled, auto-generated catalog (full vanilla id->name from unpacked game
+# assets) underneath the curated entries above. Curated names win (some are used as
+# lookup keys elsewhere); the catalog fills every remaining vanilla object id so quest
+# and bundle items resolve without hand-maintaining them. Regenerate: scripts/gen_items.py
+try:
+    from sdv_items import OBJECTS as _CATALOG_OBJECTS
+    ITEM = {**_CATALOG_OBJECTS, **ITEM}
+except Exception:  # pragma: no cover - bundled module missing (e.g. partial checkout)
+    pass
 
 # fish -> (seasons, weathers, locations, (start_hr,end_hr))  weather: any/sunny/rain
 FISH = {
@@ -1236,7 +1257,17 @@ def _on_hand_index(root):
             for it in items.findall('Item'): add(it)
     return by_name, by_id
 
-def _quest_fields(q, by_name, by_id):
+def _id_name_index(root):
+    """id -> name for every object/item present in the save (self-maintaining name
+    resolution for items not in the static ITEM table). First occurrence wins."""
+    idx = {}
+    for name, m in _object_meta(root).items():
+        iid = _norm_id(m.get('id'))
+        if iid and iid not in idx:
+            idx[iid] = name
+    return idx
+
+def _quest_fields(q, by_name, by_id, id2name=None):
     """Flatten a <Quest> element into a dict: common fields + type-specific
     requirement, plus an on-hand completability check for item-based quests."""
     g = lambda tag: _t(q, tag)
@@ -1285,7 +1316,7 @@ def _quest_fields(q, by_name, by_id):
     iid = d.get('required_item_id')
     if iid is not None and qt_i in QUEST_ITEM_TYPES:
         need = d.get('required_count', 1)
-        name = ITEM.get(str(iid))
+        name = ITEM.get(str(iid)) or (id2name.get(str(iid)) if id2name else None)
         on_hand = by_id.get(iid, 0)
         if not on_hand and name: on_hand = by_name.get(name, 0)
         d['required_item'] = name or f'#{iid}'
@@ -1378,10 +1409,11 @@ def quests(root):
     delivery/harvest/resource quests, reports the requested item, how many are
     on hand (across all backpacks + chests), and whether it's completable now."""
     by_name, by_id = _on_hand_index(root)
+    id2name = _id_name_index(root)
     players_out = []
     for p in _players(root):
         qlog = p.find('questLog')
-        qs = [_quest_fields(q, by_name, by_id) for q in qlog.findall('Quest')] if qlog is not None else []
+        qs = [_quest_fields(q, by_name, by_id, id2name) for q in qlog.findall('Quest')] if qlog is not None else []
         players_out.append({'player': _t(p,'name'), 'quest_count': len(qs), 'quests': qs})
     return {'players': players_out,
             'special_orders': _special_orders(root),
