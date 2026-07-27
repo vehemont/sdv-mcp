@@ -192,6 +192,12 @@ How to use the wiki efficiently (important):
 - Use wiki_search ONLY to discover an unknown title, and search the NOUN in 1-3 words (e.g. "Rhubarb" or "Rhubarb Seeds") - never a natural-language question like "rhubarb seeds cost price seed shop". Then open the best result with how_to_obtain/wiki_infobox/wiki_page.
 - For "how do I get X" / "where do I buy X" / "how much is X", prefer how_to_obtain("X"): it returns the acquisition summary plus the infobox (price/season/source) in a single call.
 - Before recommending a location-gated method (Desert Trader, Krobus, Skull Cavern, Ginger Island, Casino), check reachability with the `unlocks` tool.
+
+Answering "what am I missing" / progress questions (use these instead of guessing):
+- "Which fish/minerals/artifacts am I missing" or "what can I still donate to the museum" -> collections (caught/found joined to donations, with fish personal-record sizes).
+- "What recipes can I cook right now" / "what haven't I cooked" -> cooking (known-but-unmade + on-hand ingredients). For both cooking AND crafting known/made counts -> missing_recipes.
+- "Who can I still gift today/this week" or "what have I already given X" -> gift_log (2/week cap, talked-to-today, gift history). friendships only gives hearts.
+- "How close am I to X" milestone/color questions -> player_stats (in-game Stats tab counters + per-species kills). For the daily plan -> daily_briefing; for closest progression wins -> next_goals (already names specific uncaught fish + cookable-now dishes).
 """
 
 mcp = FastMCP("sdv-mcp", instructions=INSTRUCTIONS)
@@ -446,6 +452,21 @@ def museum(save_path: SavePath = "") -> dict:
     root, _ = _resolve(save_path); return P.museum(root)
 
 @mcp.tool()
+def collections(save_path: SavePath = "") -> dict:
+    """The save's collection tabs: which fish you've caught (count + personal-record
+    size), and which minerals/artifacts you've found - each joined to museum donations
+    so you can see what you HAVE but haven't donated yet. Use this (not fish_available)
+    to answer 'which fish am I missing' / 'what can I still donate'."""
+    root, _ = _resolve(save_path); return P.collections(root)
+
+@mcp.tool()
+def cooking(save_path: SavePath = "") -> dict:
+    """Cooking recipes you know but haven't made yet, each with ingredients and an
+    on_hand count (backpacks + chests), so you can tell which are cookable right now.
+    Pairs with missing_recipes (which covers both cooking + crafting known/made counts)."""
+    root, _ = _resolve(save_path); return P.cooking(root)
+
+@mcp.tool()
 def monster_goals(save_path: SavePath = "") -> dict:
     """Adventurer's Guild eradication goals: kills vs target + reward per category.
     Returns {'goals': [...], '_save': stamp}."""
@@ -455,6 +476,20 @@ def monster_goals(save_path: SavePath = "") -> dict:
 def friendships(save_path: SavePath = "") -> dict:
     """Per-player villager hearts/points and spouse status."""
     root, _ = _resolve(save_path); return P.friendships(root)
+
+@mcp.tool()
+def gift_log(save_path: SavePath = "") -> dict:
+    """Gifting planner: per villager, gifts given today/this week (2/week cap resets
+    Sunday), gifts left this week, talked-to-today, status, and full gift history.
+    Use for 'who can I still gift today/this week' and 'what have I given X'."""
+    root, _ = _resolve(save_path); return P.gift_log(root)
+
+@mcp.tool()
+def player_stats(save_path: SavePath = "") -> dict:
+    """The in-game Stats tab: all tracked counters (steps, items shipped/crafted/cooked,
+    fish caught, monsters slain, geodes cracked, gifts given, quests completed...) plus
+    per-species monster kills. Use for 'how close am I to X' milestone questions."""
+    root, _ = _resolve(save_path); return P.player_stats(root)
 
 @mcp.tool()
 def perfection(save_path: SavePath = "") -> dict:

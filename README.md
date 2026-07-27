@@ -1,6 +1,6 @@
 # sdv-mcp
 
-This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 50 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
+This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 54 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
 
 > [!CAUTION]
 > This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Then once you feel comfortable, you can point it at your real save to receive the save-per-night updates. 
@@ -114,6 +114,8 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `museum` | Donations / 95 + next milestone with its actual reward (60 = Rusty Key) |
 | `monster_goals` | Guild eradication goals: kills vs target + reward (`{'goals': [...]}`) |
 | `friendships` | Villager hearts/points + spouse, per player |
+| `gift_log` | Gifting planner: per-villager gifts today/this week (2/wk cap), talked-to-today, status + full gift history |
+| `player_stats` | In-game Stats tab: all counters (steps, shipped, fish caught, geodes, quests...) + per-species monster kills |
 | `player_tools` | Each player's tools + upgrade tier |
 | `wallet` | Keys/special items (Rusty Key, Skull Key, Club Card, ...). 1.5 + 1.6 aware (reads mail flags) |
 | `unlocks` | Which gated locations/vendors are reachable (Desert + Desert Trader, Sewers/Krobus, Skull Cavern, Casino, Quarry, Greenhouse, Minecarts, Movie Theater, Guild, Ginger Island) + how to unlock the rest |
@@ -138,6 +140,8 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `can_complete_now` | CC bundles you could finish from what's in your chests right now |
 | `bundle_sourcing` | Incomplete bundles + per missing-item wiki how-to-obtain + unlock-aware `locked_source_hints` (flags sources behind gated locations) |
 | `missing_museum` | Undonated minerals + artifacts, with where they drop |
+| `collections` | Collection tabs: fish caught (count + personal-record size), minerals/artifacts found — each joined to museum donations (what you HAVE but haven't donated) |
+| `cooking` | Cooking recipes known-but-not-made, with ingredients + on-hand count (cookable now) |
 | `missing_recipes` | Cooking/crafting recipes learned-but-not-made (+ how many not yet learned), per player |
 | `shipping_tracker` | Items shipped by name + qty; distinct count vs the 154 Full-Shipment target |
 | `golden_walnuts` | Ginger Island walnut progress: found vs 130, unspent, island-unlock + repeatable sources |
@@ -178,7 +182,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 - `sdv_parser.py` — the read-only save parser (ElementTree)
 - `sdv_wiki.py` — MediaWiki Action API client (api.php; the wiki's rest.php returns empty, so Action API it is), cached + rate-limited
 - `sdv_calc.py` — the calculators + reference tables
-- `sdv_mcp_server.py` — the 50 tools
+- `sdv_mcp_server.py` — the 54 tools
 
 ## Known limits
 - Vanilla + whatever the wiki documents only. Modded content lives on separate wikis.

@@ -63,6 +63,56 @@ CRAFT_RECIPES = {
  '(BC)13': ('Furnace', {'Copper Ore': 20, 'Stone': 25}),
 }
 
+# Vanilla cooking recipes: dish name -> {ingredient_id: qty}, generated verbatim from
+# the game's Data/CookingRecipes (1.6.15, via the wiki's Modding:Recipe_data page).
+# Ingredient ids resolve to names via ITEM (merged catalog). Negative ids are recipe
+# categories: -4 any Fish, -5 any Egg, -6 any Milk. The display names here are the
+# game's internal keys (e.g. 'Cheese Cauli.', 'Cran. Sauce') and are matched to the
+# save's cookingRecipes keys, which use the same strings.
+COOK_RECIPES = {
+ 'Algae Soup': {153: 4}, 'Artichoke Dip': {274: 1, -6: 1},
+ "Autumn's Bounty": {280: 1, 276: 1}, 'Baked Fish': {145: 1, 132: 1, 246: 1},
+ 'Banana Pudding': {91: 1, -6: 1, 245: 1}, 'Bean Hotpot': {188: 2},
+ 'Blackberry Cobbler': {410: 2, 245: 1, 246: 1},
+ 'Blueberry Tart': {258: 1, 246: 1, 245: 1, -5: 1}, 'Bread': {246: 1},
+ 'Bruschetta': {216: 1, 247: 1, 256: 1}, 'Carp Surprise': {142: 4},
+ 'Cheese Cauli.': {190: 1, 424: 1}, 'Chocolate Cake': {246: 1, 245: 1, -5: 1},
+ 'Chowder': {372: 1, -6: 1}, 'Coleslaw': {266: 1, 419: 1, 306: 1},
+ 'Complete Breakfast': {194: 1, -6: 1, 210: 1, 211: 1}, 'Cookies': {246: 1, 245: 1, -5: 1},
+ 'Crab Cakes': {717: 1, 246: 1, -5: 1, 247: 1}, 'Cran. Sauce': {282: 1, 245: 1},
+ 'Cranberry Candy': {282: 1, 613: 1, 245: 1}, 'Crispy Bass': {136: 1, 246: 1, 247: 1},
+ "Dish o' The Sea": {131: 2, 210: 1}, 'Eggplant Parm.': {272: 1, 256: 1},
+ 'Escargot': {721: 1, 248: 1}, "Farmer's Lunch": {195: 1, 24: 1},
+ 'Fiddlehead Risotto': {247: 1, 259: 1, 248: 1},
+ 'Fish Stew': {716: 1, 719: 1, 722: 1, 256: 1}, 'Fish Taco': {130: 1, 229: 1, 266: 1, 306: 1},
+ 'Fried Calamari': {151: 1, 246: 1, 247: 1}, 'Fried Eel': {148: 1, 247: 1},
+ 'Fried Egg': {-5: 1}, 'Fried Mushroom': {404: 1, 257: 1, 247: 1},
+ 'Fruit Salad': {258: 1, 254: 1, 634: 1}, 'Ginger Ale': {829: 3, 245: 1},
+ 'Glazed Yams': {280: 1, 245: 1}, 'Hashbrowns': {192: 1, 247: 1},
+ 'Ice Cream': {-6: 1, 245: 1}, 'Lobster Bisque': {715: 1, -6: 1},
+ 'Lucky Lunch': {154: 1, 229: 1, 597: 1}, 'Maki Roll': {-4: 1, 152: 1, 423: 1},
+ 'Mango Sticky Rice': {834: 1, 88: 1, 423: 1}, 'Maple Bar': {724: 1, 245: 1, 246: 1},
+ "Miner's Treat": {78: 2, 245: 1, -6: 1}, 'Moss Soup': {'Moss': 20},
+ 'Omelet': {-5: 1, -6: 1}, 'Pale Broth': {157: 2}, 'Pancakes': {246: 1, -5: 1},
+ 'Parsnip Soup': {24: 1, -6: 1, 419: 1}, 'Pepper Poppers': {260: 1, 424: 1},
+ 'Pink Cake': {254: 1, 246: 1, 245: 1, -5: 1}, 'Pizza': {246: 1, 256: 1, 424: 1},
+ 'Plum Pudding': {406: 2, 246: 1, 245: 1}, 'Poi': {830: 4},
+ 'Poppyseed Muffin': {376: 1, 246: 1, 245: 1}, 'Pumpkin Pie': {276: 1, 246: 1, -6: 1, 245: 1},
+ 'Pumpkin Soup': {276: 1, -6: 1}, 'Radish Salad': {247: 1, 419: 1, 264: 1},
+ 'Red Plate': {266: 1, 264: 1}, 'Rhubarb Pie': {252: 1, 246: 1, 245: 1},
+ 'Rice Pudding': {-6: 1, 245: 1, 423: 1}, 'Roasted Hazelnuts': {408: 3},
+ 'Roots Platter': {78: 1, 412: 1}, 'Salad': {20: 1, 22: 1, 419: 1},
+ 'Salmon Dinner': {139: 1, 300: 1, 250: 1}, 'Sashimi': {-4: 1},
+ 'Seafoam Pudding': {267: 1, 269: 1, 814: 1}, 'Shrimp Cocktail': {720: 1, 256: 1, 16: 1},
+ 'Spaghetti': {246: 1, 256: 1}, 'Spicy Eel': {148: 1, 260: 1},
+ 'Squid Ink Ravioli': {814: 1, 246: 1, 256: 1}, 'Stir Fry': {78: 1, 404: 1, 250: 1, 247: 1},
+ 'Strange Bun': {246: 1, 722: 1, 308: 1}, 'Stuffing': {216: 1, 282: 1, 408: 1},
+ 'Super Meal': {278: 1, 282: 1, 274: 1}, 'Survival Burger': {216: 1, 78: 1, 272: 1},
+ 'Tom Kha Soup': {88: 1, 720: 1, 404: 1}, 'Tortilla': {270: 1},
+ 'Triple Shot Espresso': {395: 3}, 'Tropical Curry': {88: 1, 832: 1, 260: 1},
+ 'Trout Soup': {138: 1, 153: 1}, 'Vegetable Stew': {256: 1, 284: 1},
+}
+
 MUSEUM_TOTAL = 95
 # Total-donation milestone rewards (vanilla, from the Museum wiki page).
 MUSEUM_MILESTONES = {5:'Cauliflower Seeds (9)',10:'Melon Seeds (9)',15:'Starfruit Seeds',
@@ -455,6 +505,120 @@ def monster_goals(root):
                     'complete':cur>=target,'reward':None if reward=='-' else reward})
     return out
 
+# vanilla collection tab sizes (fish / minerals / artifacts)
+FISH_TOTAL = 72; MINERAL_TOTAL = 53; ARTIFACT_TOTAL = 42
+
+def _museum_donated_ids(root):
+    out = set()
+    mp = next(iter(root.iter('museumPieces')), None)
+    if mp is not None:
+        for e in mp.findall('item'):
+            v = e.findtext('value/string')
+            if v:
+                out.add(_norm_id(v))
+    return out
+
+def collections(root):
+    """The collection tabs the save tracks but no other tool surfaces: which fish
+    you've caught (with personal-record size), and which minerals/artifacts you've
+    found - each joined against museum donations so you can see what you HAVE but
+    haven't donated yet (the gap that blocks the museum). Names from the bundled
+    item catalog. Fish detail also feeds next_goals/perfection 'Fish Caught'."""
+    host = root.find('player')
+    donated = _museum_donated_ids(root)
+
+    def name_of(iid):
+        return ITEM.get(str(iid)) or f'#{iid}'
+
+    # fish: id -> [count, bestSizeInches]
+    # fish: id -> [count, bestSizeInches]. Only 5 "fish"-tab items are museum-donatable
+    # (1.6: Seaweed, Green/White Algae, River Jelly, Sea Jelly); actual fish aren't.
+    _DONATABLE_FISH = {'152', '153', '157', 'RiverJelly', 'SeaJelly'}
+    fish = []
+    fc = host.find('fishCaught')
+    if fc is not None:
+        for e in fc.findall('item'):
+            iid = _norm_id(e.findtext('key/string'))
+            ints = e.findall('value/ArrayOfInt/int')
+            cnt = int(ints[0].text) if len(ints) > 0 and ints[0].text else 0
+            size = int(ints[1].text) if len(ints) > 1 and ints[1].text else None
+            donatable = str(iid) in _DONATABLE_FISH
+            fish.append({'item': name_of(iid), 'caught': cnt,
+                         'best_size_in': (size if size and size > 0 else None),
+                         'donatable': donatable,
+                         'donated': (iid in donated) if donatable else None})
+    fish.sort(key=lambda f: -f['caught'])
+
+    def found_map(tag):
+        el = host.find(tag)
+        out = {}
+        if el is not None:
+            for e in el.findall('item'):
+                iid = _norm_id(e.findtext('key/string'))
+                v = e.findtext('value/int')
+                out[iid] = int(v) if v and v.lstrip('-').isdigit() else 1
+        return out
+
+    minerals = [{'item': name_of(i), 'found': n, 'donated': i in donated}
+                for i, n in found_map('mineralsFound').items()]
+    artifacts = [{'item': name_of(i), 'found': n, 'donated': i in donated}
+                 for i, n in found_map('archaeologyFound').items()]
+
+    def not_donated(lst):
+        return [x['item'] for x in lst if x.get('donated') is False]
+
+    return {
+        'fish': {'caught_species': len(fish), 'total': FISH_TOTAL,
+                 'records': fish, 'caught_not_donated': not_donated(fish)},
+        'minerals': {'found': len(minerals), 'total': MINERAL_TOTAL,
+                     'items': minerals, 'found_not_donated': not_donated(minerals)},
+        'artifacts': {'found': len(artifacts), 'total': ARTIFACT_TOTAL,
+                      'items': artifacts, 'found_not_donated': not_donated(artifacts)},
+        'note': "caught/found = what you've ever obtained; donated = in the museum. "
+                "`*_not_donated` lists donatable items you have a record of but haven't "
+                "donated - donate those to grow the museum. Only 5 fish are donatable "
+                "(donatable=true); the rest of the fish tab isn't donatable (donated=null). "
+                "Fish best_size_in is your personal record (inches). Totals are the "
+                "vanilla collection-tab counts.",
+    }
+
+def player_stats(root):
+    """The in-game Stats tab: every tracked counter from stats/Values (steps taken,
+    items shipped/crafted/cooked, fish caught, monsters slain, geodes cracked, gifts
+    given, quests completed...) plus specificMonstersKilled (per-species kill counts).
+    Useful for milestone color ('how close am I to X'). Per player in co-op."""
+    def _uint(v):
+        return int(v) if v and v.lstrip('-').isdigit() else 0
+    players = []
+    for p in _players(root):
+        counters = {}
+        vals = p.find('stats/Values')
+        if vals is not None:
+            for e in vals.findall('item'):
+                k = e.findtext('key/string')
+                v = e.findtext('value/unsignedInt')
+                if v is None:
+                    v = e.findtext('value/int')
+                if k:
+                    counters[k] = _uint(v)
+        monsters = {}
+        smk = p.find('stats/specificMonstersKilled')
+        if smk is not None:
+            for e in smk.findall('item'):
+                k = e.findtext('key/string')
+                v = e.findtext('value/int')
+                if k:
+                    monsters[k] = _uint(v)
+        players.append({'player': _t(p, 'name'), 'counters': counters,
+                        'specific_monsters_killed': monsters})
+    return {'players': players,
+            'note': "counters = the in-game Stats tab (cumulative lifetime totals). "
+                    "Keys are the game's internal names (camelCase). Notable: fishCaught "
+                    "(total, includes dupes - use collections for distinct species), "
+                    "itemsShipped, monstersKilled, questsCompleted, geodesCracked. "
+                    "specific_monsters_killed is per-species (feeds Adventurer's Guild "
+                    "goals - see monster_goals for the aggregated targets)."}
+
 def friendships(root):
     out = {}
     for p in _players(root):
@@ -468,6 +632,65 @@ def friendships(root):
         rel.sort(key=lambda r:-r['points'])
         out[_t(p,'name')] = {'spouse':_t(p,'spouse') or None,'relationships':rel}
     return out
+
+def gift_log(root):
+    """Gifting planner: per villager, how many gifts you've given today/this week
+    (the 2-per-week cap resets Sunday), whether you've talked to them today, their
+    relationship Status, and the full history of items you've given them. Use it to
+    answer 'who can I still gift today/this week' and 'what have I already given X'.
+    friendships only returns hearts - it doesn't track the daily/weekly gift caps."""
+    players = []
+    for p in _players(root):
+        gifted = {}
+        gi = p.find('giftedItems')
+        if gi is not None:
+            for e in gi.findall('item'):
+                npc = e.findtext('key/string')
+                dd = e.find('value/dictionary')
+                hist = {}
+                if dd is not None:
+                    for x in dd.findall('item'):
+                        iid = _norm_id(x.findtext('key/string'))
+                        v = x.findtext('value/int')
+                        qty = int(v) if v and v.lstrip('-').isdigit() else 1
+                        if iid:
+                            hist[ITEM.get(str(iid)) or f'#{iid}'] = qty
+                if npc:
+                    gifted[npc] = hist
+        rows = []
+        fd = p.find('friendshipData')
+        if fd is not None:
+            for item in fd.findall('item'):
+                nm = item.findtext('key/string')
+                fr = item.find('value/Friendship')
+                if nm is None or fr is None:
+                    continue
+                def gi_(tag):
+                    v = fr.findtext(tag)
+                    return int(v) if v and v.lstrip('-').isdigit() else 0
+                talked = fr.findtext('TalkedToToday') == 'true'
+                gw, gd = gi_('GiftsThisWeek'), gi_('GiftsToday')
+                rows.append({
+                    'villager': nm,
+                    'hearts': gi_('Points') // 250,
+                    'status': fr.findtext('Status') or None,
+                    'gifts_today': gd,
+                    'gifts_this_week': gw,
+                    'gifts_left_this_week': max(0, 2 - gw),
+                    'talked_to_today': talked,
+                    'items_given': gifted.get(nm, {}),
+                })
+        # giftable-first: those you can still give to this week, then by hearts asc
+        rows.sort(key=lambda r: (r['gifts_left_this_week'] == 0, r['hearts']))
+        players.append({'player': _t(p, 'name'),
+                        'giftable_this_week': sum(1 for r in rows if r['gifts_left_this_week'] > 0),
+                        'villagers': rows})
+    return {'players': players,
+            'note': "gifts_left_this_week = 2 - GiftsThisWeek (cap resets Sunday). "
+                    "gifts_today>0 means you already gave them one today (1/day). "
+                    "talked_to_today tracks the daily +20 friendship talk. items_given "
+                    "is the lifetime gift history per villager (item -> times given). "
+                    "Sorted so villagers you can still gift this week come first."}
 
 DATABLE = {'Abigail','Penny','Leah','Maru','Haley','Emily',
            'Alex','Elliott','Harvey','Sam','Sebastian','Shane'}
@@ -569,6 +792,26 @@ def next_goals(root):
     closest_bundles = sorted(cc['incomplete_bundles'], key=lambda b: b['need_count'])[:3]
     near_perf = sorted((b for b in perf['breakdown'] if not b['complete']),
                        key=lambda b: b['remaining'])
+
+    # Name the SPECIFIC items behind the bare 'Fish Caught'/'Cooking Recipes Made'
+    # counts so the model can act on them, not just cite a number.
+    # Uncaught fish you can catch right now (this season/any weather):
+    uncaught_now = []
+    try:
+        fa = fish_available(root, only_uncaught=True)
+        uncaught_now = [f['fish'] for f in fa.get('fish', [])][:8]
+    except Exception:
+        uncaught_now = []
+    # Cooking recipes you already have every ingredient for (cookable today):
+    cookable_now = []
+    try:
+        ck = cooking(root)
+        if ck['players']:
+            cookable_now = [r['dish'] for r in ck['players'][0]['unmade_recipes']
+                            if r.get('cookable_now')]
+    except Exception:
+        cookable_now = []
+
     return {
         'perfection_pct': perf['perfection_pct'],
         'skills_closest_to_level_up': _skill_goals(root)[:3],
@@ -583,10 +826,86 @@ def next_goals(root):
             {'category': b['category'], 'have': b['have'], 'of': b['of'],
              'remaining': b['remaining'], 'weight_pct': b['weight_pct']}
             for b in near_perf[:4]],
+        'uncaught_fish_this_season': uncaught_now,
+        'cookable_now': cookable_now,
         'note': 'Closest milestones only (full detail via perfection, community_center, '
-                'museum, missing_recipes, bundle_sourcing). Prioritise low xp_to_next skills '
-                '(especially next_level 5/10 for a profession), bundles with the fewest items '
-                'remaining, and perfection categories with the smallest remaining count.'}
+                'museum, missing_recipes, collections, cooking, bundle_sourcing). '
+                'Prioritise low xp_to_next skills (especially next_level 5/10 for a '
+                'profession), bundles with the fewest items remaining, and perfection '
+                'categories with the smallest remaining count. uncaught_fish_this_season '
+                'names specific fish you can still catch for the Fish Caught/perfection '
+                'collection; cookable_now names known recipes you hold every ingredient '
+                'for (free Cooking Recipes Made progress).'}
+
+# Recipe category ids (negative) -> human label, and the in-game object Category int
+# that satisfies them (they're the same numbering for Fish/Egg/Milk).
+_COOK_CATEGORY = {-4: 'any Fish', -5: 'any Egg', -6: 'any Milk'}
+_CATEGORY_MATCH = {-4: {-4}, -5: {-5}, -6: {-6}}
+
+def cooking(root):
+    """Cooking recipes you KNOW but haven't made yet, checked against what's in your
+    backpack + chests so you can see which you can cook RIGHT NOW. Ingredients are
+    matched by id or by category (any fish/egg/milk/veg/fruit). Made-count uses the
+    save's recipesCooked (id -> times made). Requires a kitchen (house upgrade 1) or
+    a Cookout Kit."""
+    by_name, by_id = _on_hand_index(root)
+    meta = _object_meta(root)
+    # category of every held item id, for category-ingredient matching
+    id2cat = {}
+    for nm, m in meta.items():
+        iid = _norm_id(m.get('id'))
+        if iid and iid not in id2cat:
+            id2cat[iid] = m.get('category')
+
+    def on_hand_for(iid):
+        if isinstance(iid, int) and iid < 0:
+            want = _CATEGORY_MATCH.get(iid, set())
+            total = 0
+            for hid, qty in by_id.items():
+                if id2cat.get(hid) in want:
+                    total += qty
+            return total
+        return by_id.get(str(iid), 0)
+
+    players = []
+    for p in _players(root):
+        name = _t(p, 'name')
+        known = [k for k, v in _dict_pairs(p.find('cookingRecipes'))]
+        cooked_ids = {_norm_id(k): (int(v) if v and v.lstrip('-').isdigit() else 0)
+                      for k, v in _dict_pairs(p.find('recipesCooked'))}
+        # a dish counts as made if its result id is in recipesCooked with qty>0
+        name2id = {v: k for k, v in ITEM.items()}
+        made = {d for d in known
+                if cooked_ids.get(_norm_id(name2id.get(d, '')), 0) > 0}
+        unmade = [d for d in known if d not in made]
+        rows = []
+        for dish in unmade:
+            rec = COOK_RECIPES.get(dish)
+            if rec is None:
+                rows.append({'dish': dish, 'ingredients': None,
+                             'cookable_now': None,
+                             'note': 'recipe not in local table - use wiki_page(dish)'})
+                continue
+            mats = []
+            for iid, qty in rec.items():
+                label = (_COOK_CATEGORY.get(iid) if (isinstance(iid, int) and iid < 0)
+                         else (ITEM.get(str(iid)) or f'#{iid}'))
+                have = on_hand_for(iid)
+                mats.append({'item': label, 'need': qty, 'on_hand': have})
+            rows.append({'dish': dish, 'ingredients': mats,
+                         'cookable_now': all(m['on_hand'] >= m['need'] for m in mats)})
+        rows.sort(key=lambda r: (r['cookable_now'] is not True, r['dish']))
+        players.append({'player': name,
+                        'known': len(known), 'made': len(made),
+                        'unmade_count': len(unmade),
+                        'cookable_now_count': sum(1 for r in rows if r['cookable_now']),
+                        'unmade_recipes': rows})
+    return {'players': players, 'perfection_total': 81,
+            'note': "unmade_recipes = known but never cooked, each with ingredients and "
+                    "on_hand counts (backpacks+chests). cookable_now=true means you hold "
+                    "every ingredient. Category ingredients (any Fish/Egg/Milk/etc) count "
+                    "any matching held item. Dishes not in the local recipe table return "
+                    "ingredients=null - call wiki_page(dish) for those."}
 
 def missing_recipes(root):
     """Per player: cooking + crafting recipes LEARNED but not yet made (actionable
