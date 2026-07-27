@@ -22,8 +22,19 @@ Example questions that utilize the state of your save, tailoring responses to yo
 > "How many sprinklers will I need to water all my Cauliflower seeds I have?"
 
 ## Requirements
-- Python 3.10+
-- `pip install -r requirements.txt` (just the `mcp` SDK; wiki client uses stdlib `urllib`)
+- **Python 3.10 or newer.**
+- **A Stardew Valley save file.** The game stores saves at:
+  - Windows: `%APPDATA%\StardewValley\Saves\<FarmName>_<id>\<FarmName>_<id>`
+  - macOS/Linux: `~/.config/StardewValley/Saves/<FarmName>_<id>/<FarmName>_<id>`
+
+  Point the server at that save file or its folder (`--save` / `--save-dir`, or the `SDV_SAVE_PATH` / `SDV_SAVE_DIR` env var). The server never searches for saves on its own.
+- **One Python dependency** — the `mcp` SDK (`mcp>=1.2.0`). Everything else uses the Python standard library (the wiki client is stdlib `urllib`), so there is nothing else to install.
+- **`uv`** — only needed for the recommended `uvx` install method below (it provides the `uvx` command). Install it from [docs.astral.sh/uv](https://docs.astral.sh/uv/). Not required if you instead `pip install` the package or run from this folder.
+
+Install it with either:
+- `uvx sdv-mcp` (recommended — runs the published package directly, no manual install; requires `uv`), or
+- `pip install sdv-mcp` (the published package), or
+- `pip install -r requirements.txt` then `python sdv_mcp_server.py` (to run from this folder).
 
 Keep the four modules in the same folder — the server imports the others from its own dir.
 
