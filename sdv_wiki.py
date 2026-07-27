@@ -10,7 +10,7 @@ in-process by (endpoint, params) to be gentle on the wiki.
 Docs/etiquette: sends a descriptive User-Agent and maxlag; content is CC BY-NC-SA.
 """
 from __future__ import annotations
-import json, re, time, urllib.parse, urllib.request
+import json, re, threading, time, urllib.parse, urllib.request
 
 # NOTE: this wiki runs MediaWiki 1.35 (no CirrusSearch, no TextExtracts). The REST API
 # (rest.php/v1/...) returns empty responses, so we use the Action API (api.php). Two facts
@@ -28,6 +28,7 @@ _CACHE = {}
 _TTL = 3600          # seconds
 _MIN_INTERVAL = 0.5  # simple rate limit between live calls
 _last_call = [0.0]
+_LOCK = threading.Lock()
 
 def _get(params):
     params = {**params, "format": "json", "formatversion": "2", "maxlag": "5"}
@@ -36,17 +37,22 @@ def _get(params):
     hit = _CACHE.get(key)
     if hit and now - hit[0] < _TTL:
         return hit[1]
-    # polite rate limit
-    wait = _MIN_INTERVAL - (now - _last_call[0])
-    if wait > 0:
-        time.sleep(wait)
-    url = API + "?" + key
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        data = json.loads(r.read().decode("utf-8"))
-    _last_call[0] = time.time()
-    _CACHE[key] = (_last_call[0], data)
-    return data
+    # polite rate limit (serialized so concurrent callers don't hammer the wiki)
+    with _LOCK:
+        now = time.time()
+        hit = _CACHE.get(key)  # re-check: another thread may have just cached it
+        if hit and now - hit[0] < _TTL:
+            return hit[1]
+        wait = _MIN_INTERVAL - (now - _last_call[0])
+        if wait > 0:
+            time.sleep(wait)
+        url = API + "?" + key
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        _last_call[0] = time.time()
+        _CACHE[key] = (_last_call[0], data)
+        return data
 
 # ---------------- wikitext cleanup ----------------------------------------
 def _strip_links(t):
@@ -125,6 +131,68 @@ def opensearch(term, limit=6):
     except (IndexError, TypeError, KeyError):
         return []
 
+def _prefix_range_titles(prefix, limit=100):
+    """Page titles starting with `prefix`, matched CASE-INSENSITIVELY. The wiki's allpages
+    collation (apfrom..apto) is case-insensitive but breaks on multi-word ranges, so we
+    fetch the alphabetical window for the FIRST word (first .. first+sentinel) and then
+    filter to titles that actually start with the full (possibly multi-word) prefix. This
+    handles 'void essence' -> Void Essence, 'puffer' -> Pufferfish regardless of casing."""
+    if not prefix:
+        return []
+    first = prefix.split(" ")[0]
+    d = _get({"action": "query", "list": "allpages", "apfrom": first,
+              "apto": first + "\u00ff", "aplimit": str(limit), "apnamespace": "0"})
+    low = prefix.lower()
+    return [p["title"] for p in d.get("query", {}).get("allpages", [])
+            if p["title"].lower().startswith(low)]
+
+def _best_title(query_words, titles):
+    """Pick the most relevant title from prefix matches: prefer one containing the most
+    query words (so 'void essence' beats 'Void Chicken'), then the shortest (most specific)."""
+    def score(t):
+        tl = t.lower()
+        overlap = sum(1 for w in query_words if w.lower().rstrip('s') in tl)
+        return (overlap, -len(t))
+    return max(titles, key=score) if titles else None
+
+def resolve_title(query, limit=6):
+    """Resolve any reasonable spelling of an item/NPC/page name to a canonical wiki page
+    title. Returns {"title": <canonical or None>, "suggestions": [...], "via": <how>}.
+
+    Weak-model friendly: handles lowercase, plurals, multiword phrases, and partial names.
+    Strategy: build prefix candidates from the topic keywords (full phrase first, then
+    fewer leading words), match each case-insensitively against allpages, and pick the hit
+    containing the most query words. Falls back to OpenSearch. The caller does NOT need to
+    pre-clean the query - pass whatever name the user gave ('bat wing', 'Large Goat Milk',
+    'prismatic shard best way')."""
+    kw = _keywords(query)
+    if not kw:
+        kw = [w for w in re.findall(r"[A-Za-z0-9']+", query) if w]
+    if not kw:
+        return {"title": None, "suggestions": [], "via": "empty query"}
+    # candidate prefixes, most-specific first: full phrase, then drop the last word, etc.
+    cands, seen = [], set()
+    def add(words):
+        v = " ".join(words)
+        if v and v.lower() not in seen:
+            seen.add(v.lower()); cands.append(words)
+    add(kw)
+    if kw[-1].lower().endswith("s"):                 # de-pluralize last word as an alt
+        add(kw[:-1] + [kw[-1][:-1]])
+    for n in range(len(kw) - 1, 0, -1):              # fewer leading keywords
+        add(kw[:n])
+    for words in cands:
+        hits = _prefix_range_titles(" ".join(words), limit=50)
+        if hits:
+            best = _best_title(kw, hits)
+            return {"title": best, "suggestions": hits[:limit], "via": f"prefix({' '.join(words)!r})"}
+    for words in cands:
+        hits = opensearch(" ".join(words), limit=limit)
+        if hits:
+            best = _best_title(kw, hits)
+            return {"title": best, "suggestions": hits, "via": f"opensearch({' '.join(words)!r})"}
+    return {"title": None, "suggestions": [], "via": "no match"}
+
 def search(query, limit=6):
     """Full-text search for a page TITLE. Returns [{title, snippet, pageid}].
 
@@ -143,22 +211,10 @@ def search(query, limit=6):
         resp["next_step"] = (f"Open the right page directly: how_to_obtain(\"{out[0]['title']}\") "
                              f"or wiki_infobox(\"{out[0]['title']}\").")
         return resp
-    # No full-text hit: resolve real page titles via OpenSearch (the correct title endpoint).
-    # OpenSearch is prefix-based and case-sensitive past the first letter, and SDV page
-    # titles are Title Case, so try Title-Cased forms and progressively fewer nouns.
-    kw = _keywords(query)
-    raw = [" ".join(kw), " ".join(kw[:2]), " ".join(kw[:1])]
-    cands = []
-    for c in raw:
-        if c:
-            cands.append(c)
-            if c.title() != c:
-                cands.append(c.title())
-    suggestions = []
-    for cand in dict.fromkeys(cands):
-        suggestions = opensearch(cand)
-        if suggestions:
-            break
+    # No full-text hit: resolve real page titles via the stronger cascade resolver
+    # (allpages prefix + OpenSearch), which tolerates lowercase/plural/partial input.
+    r = resolve_title(query)
+    suggestions = r["suggestions"]
     resp["suggestions"] = suggestions
     if suggestions:
         resp["hint"] = (f"No full-text match (this wiki's search needs every word to match). "
@@ -172,23 +228,36 @@ def search(query, limit=6):
 def page(title, section=None, raw=False, max_chars=6000):
     """Fetch a page as cleaned plain text (or raw wikitext). If section is given
     (a heading title), return just that section. Follows redirects."""
-    d = _get({"action": "parse", "page": title, "prop": "wikitext", "redirects": "1"})
+    d = _get({"action": "parse", "page": title, "prop": "wikitext|sections", "redirects": "1"})
     if "error" in d:
         return {"title": title, "error": d["error"].get("info", "not found")}
     p = d["parse"]
     wt = p["wikitext"]
+    sections = _toc(d)
     if section:
         wt = _extract_section(wt, section)
         if wt is None:
             return {"title": p["title"], "error": f"section '{section}' not found",
-                    "sections": _list_sections(p["wikitext"])}
+                    "sections": sections}
     text = wt if raw else clean_wikitext(wt)
     truncated = len(text) > max_chars
     return {"title": p["title"], "pageid": p["pageid"],
-            "sections": _list_sections(p["wikitext"]),
+            "sections": sections,
             "content": text[:max_chars], "truncated": truncated,
             "url": "https://stardewvalleywiki.com/" + p["title"].replace(" ", "_"),
             "source": "Stardew Valley Wiki (CC BY-NC-SA)"}
+
+def _toc(parse_response):
+    """Ordered table-of-contents (heading lines) from an action=parse response that
+    requested prop=sections. Cleaner than regexing wikitext (handles nested levels,
+    template-injected headings)."""
+    secs = parse_response.get("parse", {}).get("sections", [])
+    out = []
+    for s in secs:
+        line = s.get("line", "").strip()
+        if line and line not in out:
+            out.append(line)
+    return out
 
 def _list_sections(wt):
     return re.findall(r"^==+\s*([^=]+?)\s*==+\s*$", wt, flags=re.M)
@@ -246,3 +315,33 @@ def infobox(title):
             "fields": fields,
             "url": "https://stardewvalleywiki.com/" + p["title"].replace(" ", "_"),
             "source": "Stardew Valley Wiki (CC BY-NC-SA)"}
+
+def category(name, limit=200):
+    """All member pages of a wiki category, e.g. 'Spring fish' -> the 37 spring-fish pages.
+    Accepts the name with or without the 'Category:' prefix and tolerates rough input
+    (resolves via allpages). Use this to answer 'all X in season Y' / 'every <type> of
+    <category>' questions exhaustively instead of guessing individual pages."""
+    cat = name.strip()
+    if not cat.lower().startswith("category:"):
+        cat = "Category:" + cat
+    d = _get({"action": "query", "list": "categorymembers", "cmtitle": cat,
+              "cmlimit": str(limit), "cmtype": "page|subcat"})
+    if "error" in d:
+        return {"category": cat, "error": d["error"].get("info", "not found")}
+    members = d.get("query", {}).get("categorymembers", [])
+    if not members:
+        # try to resolve a rough category name via prefix matching in the category namespace
+        rough = cat.split(":", 1)[1]
+        rd = _get({"action": "query", "list": "allpages", "apprefix": rough,
+                   "aplimit": "8", "apnamespace": "14"})
+        # ns=14 titles already include the "Category:" prefix - don't double it
+        suggestions = [p["title"] for p in rd.get("query", {}).get("allpages", [])]
+        return {"category": cat, "members": [], "suggestions": suggestions,
+                "hint": "No members - is the category name right? Closest: " + (", ".join(suggestions) if suggestions else "none")}
+    pages = [m["title"] for m in members if m["ns"] == 0]
+    subcats = [m["title"] for m in members if m["ns"] == 14]
+    out = {"category": cat, "count": len(pages), "pages": pages,
+           "source": "Stardew Valley Wiki (CC BY-NC-SA)"}
+    if subcats:
+        out["subcategories"] = subcats
+    return out

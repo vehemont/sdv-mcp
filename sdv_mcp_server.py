@@ -562,6 +562,24 @@ def golden_walnuts(save_path: SavePath = "") -> dict:
     root, _ = _resolve(save_path); return P.golden_walnuts(root)
 
 @mcp.tool()
+def secret_notes(save_path: SavePath = "") -> dict:
+    """Secret Notes found (1-25) with per-note found/missing flags - a 'collect them
+    all' goal that's otherwise invisible to the model."""
+    root, _ = _resolve(save_path); return P.secret_notes(root)
+
+@mcp.tool()
+def tailoring(save_path: SavePath = "") -> dict:
+    """Tailoring progress: every item you've made at the sewing machine / Emily's,
+    resolved to item names. No fixed total - reports what you've made so far."""
+    root, _ = _resolve(save_path); return P.tailoring(root)
+
+@mcp.tool()
+def raccoon(save_path: SavePath = "") -> dict:
+    """The 1.6 Raccoon storyline (Cindersap Forest): requests completed, stage
+    (not_started/in_progress/done), times fed, and current-request season."""
+    root, _ = _resolve(save_path); return P.raccoon(root)
+
+@mcp.tool()
 def full_report(save_path: SavePath = "") -> dict:
     """Everything at once: overview, players, CC, inventory, processing, feed,
     museum, monster goals, friendships, perfection, tools, wallet, mods."""
@@ -577,29 +595,62 @@ def wiki_search(query: Annotated[str, Field(description="A short topic NOUN of 1
     redirects). For 'how to get / where to buy / price of X', prefer how_to_obtain(X)."""
     return WIKI.search(query, limit=limit)
 
+def _resolve_wiki(title):
+    """Best-effort fix of a rough/typo'd page name to a real wiki title. Returns
+    (resolved_title, was_corrected). We tolerate lowercase/plural/partial input so a
+    weaker model that types 'bat wing' or 'large goat milk' still lands on the page."""
+    r = WIKI.resolve_title(title)
+    resolved = r.get("title")
+    if resolved and resolved.lower() != title.strip().lower():
+        return resolved, True
+    if resolved:
+        return resolved, False
+    return title, False
+
 @mcp.tool()
-def wiki_page(title: Annotated[str, Field(description="Exact page title, e.g. 'Sturgeon'. Redirects are followed.")],
+def wiki_page(title: Annotated[str, Field(description="Page title, e.g. 'Sturgeon'. Rough input ('sturgeon', 'puffer fish') is auto-corrected; redirects followed.")],
               section: Annotated[str, Field(description="Optional heading (e.g. 'Prizes', 'Fish Pond') to return only that section.")] = "",
               raw: Annotated[bool, Field(description="Return raw wikitext instead of cleaned text.")] = False) -> dict:
     """Fetch a wiki page as cleaned plain text - to VERIFY facts and pull context
-    (prices, seasons, locations, event schedules)."""
-    return WIKI.page(title, section=section or None, raw=raw)
+    (prices, seasons, locations, event schedules). Pass whatever name you have; it is
+    auto-resolved to the right page (you'll see `resolved_from` if it was corrected)."""
+    t, corrected = _resolve_wiki(title)
+    out = WIKI.page(t, section=section or None, raw=raw)
+    if corrected and "error" not in out:
+        out["resolved_from"] = title
+    if "error" in out and not corrected:
+        out["hint"] = f"'{title}' didn't resolve. Try wiki_search(\"{title}\") or check the spelling."
+    return out
 
 @mcp.tool()
-def wiki_infobox(title: Annotated[str, Field(description="Exact page title, e.g. 'Sturgeon'.")]) -> dict:
+def wiki_infobox(title: Annotated[str, Field(description="Page title, e.g. 'Sturgeon'. Rough input is auto-corrected.")]) -> dict:
     """A page's infobox as structured key/value fields (price/season/location) -
-    the most reliable surface for verification."""
-    return WIKI.infobox(title)
+    the most reliable surface for verification. Pass any spelling; auto-resolved."""
+    t, corrected = _resolve_wiki(title)
+    out = WIKI.infobox(t)
+    if corrected and "error" not in out:
+        out["resolved_from"] = title
+    return out
 
 @mcp.tool()
-def how_to_obtain(item: Annotated[str, Field(description="Item name, e.g. 'Bat Wing', 'Cauliflower', 'Solar Essence'.")]) -> dict:
+def wiki_category(name: Annotated[str, Field(description="A wiki category, e.g. 'Spring fish', 'Summer crops', 'Forage'. The 'Category:' prefix is optional.")]) -> dict:
+    """List every page in a category - answer 'all <type> in <season/context>' questions
+    exhaustively (e.g. all 37 spring fish, all summer crops) instead of naming pages
+    one by one. Then open individual pages with how_to_obtain/wiki_infobox."""
+    return WIKI.category(name)
+
+@mcp.tool()
+def how_to_obtain(item: Annotated[str, Field(description="Item name, e.g. 'Bat Wing', 'Cauliflower', 'Solar Essence'. Rough input ('bat wing', 'large goat milk') is auto-corrected.")]) -> dict:
     """How to get an item: the wiki's lead-section summary of every acquisition
     method (monster drops, shop purchases, trades, gifting, crafting) plus the
     structured infobox (source/season/price). Use this to plan the best way to
-    obtain a quest/bundle item. Call wiki_page(item) for full drop-rate detail."""
+    obtain a quest/bundle item. Pass any spelling; auto-resolved. Call wiki_page(item)
+    for full drop-rate detail."""
+    item, _ = _resolve_wiki(item)
     sm = WIKI.summary(item); ib = WIKI.infobox(item)
     if sm.get("error") and ib.get("error"):
-        return {"item": item, "error": sm.get("error")}
+        return {"item": item, "error": sm.get("error"),
+                "hint": f"Couldn't resolve '{item}'. Try wiki_search(\"{item}\") to find the right page title."}
     return {"item": sm.get("title") or item, "how_to_obtain": sm.get("summary"),
             "fields": ib.get("fields"), "url": sm.get("url") or ib.get("url"),
             "source": "Stardew Valley Wiki (CC BY-NC-SA)",

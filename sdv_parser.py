@@ -609,8 +609,25 @@ def player_stats(root):
                 v = e.findtext('value/int')
                 if k:
                     monsters[k] = _uint(v)
-        players.append({'player': _t(p, 'name'), 'counters': counters,
-                        'specific_monsters_killed': monsters})
+        # Pet + a few flavor counters not in stats/Values. The pet is an NPC with
+        # xsi:type Pet (its <name> holds the pet's name); whichPetType/Breed live on the
+        # player. Pet names aren't per-player in co-op, so report the first one found.
+        pet = None
+        ptype = _t(p, 'whichPetType')
+        pet_npc = next((e for e in root.iter() if e.get(XSI) == 'Pet'), None)
+        pet_name = _t(pet_npc, 'name') if pet_npc is not None else None
+        if ptype or pet_name:
+            pet = {'name': pet_name, 'type': ptype, 'breed': _t(p, 'whichPetBreed')}
+        flavor = {'songs_heard': len(p.findall('songsHeard/string')),
+                  'locations_visited': len(p.findall('locationsVisited/string')),
+                  'secret_notes_found': len(p.findall('secretNotesSeen/int')),
+                  'tailored_items': len(p.findall('tailoredItems/string')),
+                  'trigger_actions_run': len(p.findall('triggerActionsRun/string'))}
+        entry = {'player': _t(p, 'name'), 'counters': counters,
+                 'specific_monsters_killed': monsters, 'flavor': flavor}
+        if pet:
+            entry['pet'] = pet
+        players.append(entry)
     return {'players': players,
             'note': "counters = the in-game Stats tab (cumulative lifetime totals). "
                     "Keys are the game's internal names (camelCase). Notable: fishCaught "
@@ -729,6 +746,14 @@ def perfection(root):
                    if x.find('buildingType') is not None)
     obelisks = sum(blds.get(k, 0) for k in ['Earth Obelisk','Water Obelisk','Desert Obelisk','Island Obelisk'])
     gold_clock = 1 if blds.get('Gold Clock', 0) else 0
+    def _root_int(tag):
+        e = next(iter(root.iter(tag)), None)
+        return int(e.text) if e is not None and e.text and e.text.lstrip('-').isdigit() else 0
+    collection_extras = {'lost_books_found': _root_int('lostBooksFound'),
+                         'lost_books_total': 21,
+                         'mini_shipping_bins': _root_int('miniShippingBinsObtained'),
+                         'treasure_totems_used': _root_int('treasureTotemsUsed'),
+                         'times_fed_raccoons': _root_int('timesFedRaccoons')}
     monsters = sum(1 for g in monster_goals(root) if g['complete'])
     fr = friendships(root).get(_t(host,'name'), {}).get('relationships', [])
     great = sum(1 for r in fr if r['hearts'] >= (8 if r['villager'] in DATABLE else 10))
@@ -754,6 +779,7 @@ def perfection(root):
         per_player.append({'player':_t(p,'name'),'farmer_level':player_level(p),
                            'stardrops':player_stardrops(p),'great_friends':pg})
     return {'perfection_pct':round(total,1),'breakdown':breakdown,'per_player':per_player,
+            'collection_extras':collection_extras,
             'note':'Weighted per the in-game Perfection Tracker (verified vs wiki). The % is the '
                    "HOST's. Farmer Level = player.Level = (sum of the 5 skill levels)//2, max 25 "
                    '(NOT a count of maxed skills). Cooking/Crafting = recipes MADE (not just known). '
@@ -981,6 +1007,86 @@ def golden_walnuts(root):
                     "the full location checklist. repeatable_source_progress tracks the capped "
                     "repeatable sources (digging/fishing/bushes/etc). Requires the island unlocked."}
 
+SECRET_NOTE_TOTAL = 25
+
+def secret_notes(root):
+    """Secret Notes progress: which note numbers (1-25) you've found and read, from
+    player/secretNotesSeen (an ArrayOfInt). A named 'collect them all' goal that's
+    otherwise invisible to the model. Empty until the first note is read."""
+    host = root.find('player')
+    seen = []
+    el = host.find('secretNotesSeen') if host is not None else None
+    if el is not None:
+        for it in el.findall('int'):
+            t = (it.text or '').strip()
+            if t.lstrip('-').isdigit():
+                seen.append(int(t))
+    seen = sorted(set(seen))
+    missing = [n for n in range(1, SECRET_NOTE_TOTAL + 1) if n not in seen]
+    return {'found': len(seen), 'total': SECRET_NOTE_TOTAL,
+            'notes_found': seen, 'notes_missing': missing,
+            'complete': len(seen) >= SECRET_NOTE_TOTAL,
+            'note': "Secret Notes drop from monsters/fishing/foraging/winter activities once "
+                    "unlocked. Numbers 1-25 (vanilla). notes_missing = the numbers you haven't "
+                    "read yet. See wiki_page('Secret Notes') for what each reveals."}
+
+def tailoring(root):
+    """Tailoring progress: which items you've made at the sewing machine / Emily's
+    tailoring, from player/tailoredItems (an ArrayOfString of item names/ids). Empty
+    until you first tailor. There's no fixed total - this reports what you've made."""
+    host = root.find('player')
+    made = []
+    el = host.find('tailoredItems') if host is not None else None
+    if el is not None:
+        for it in el.findall('string'):
+            t = (it.text or '').strip()
+            if t:
+                made.append(t)
+    made = sorted(set(made))
+    id2name = _id_name_index(root)
+    named = [{'item': id2name.get(_norm_id(m), m), 'raw': m} for m in made]
+    return {'tailored_count': len(made), 'items': named,
+            'note': "Every item you've tailored at the sewing machine (Emily's house after "
+                    "the 'Rock Rejuvenation' event, or your own Sewing Machine). There's no "
+                    "collection total - this is the list of what you've made so far."}
+
+def raccoon(root):
+    """The 1.6 Raccoon storyline (Cindersap Forest): how many of the raccoon's requests
+    (bundles) you've completed and what the current request asks. From root-level
+    raccoonBundles (booleans), timesFedRaccoons, seasonOfCurrentRaccoonBundle and
+    daysPlayedWhenLastRaccoonBundleWasFinished. Inactive until the giant stump event."""
+    rb = root.find('raccoonBundles')
+    done_flags = []
+    if rb is not None:
+        done_flags = [(b.text or '').strip().lower() == 'true' for b in rb.findall('boolean')]
+    completed = sum(1 for f in done_flags if f)
+    fed = root.findtext('timesFedRaccoons')
+    fed = int(fed) if fed and fed.lstrip('-').isdigit() else 0
+    season_idx = root.findtext('seasonOfCurrentRaccoonBundle')
+    season_idx = int(season_idx) if season_idx and season_idx.lstrip('-').isdigit() else -1
+    seasons = ['spring', 'summer', 'fall', 'winter']
+    season = seasons[season_idx] if 0 <= season_idx < 4 else None
+    last_done = root.findtext('daysPlayedWhenLastRaccoonBundleWasFinished')
+    last_done = int(last_done) if last_done and last_done.lstrip('-').isdigit() else 0
+    active = bool(done_flags) and 0 < completed < len(done_flags)
+    if not done_flags or completed == 0:
+        stage = 'not_started'
+    elif completed >= len(done_flags):
+        stage = 'all_known_requests_done'
+    else:
+        stage = 'in_progress'
+    out = {'requests_completed': completed, 'requests_known': len(done_flags),
+           'times_fed': fed, 'current_request_season': season,
+           'stage': stage, 'active': active,
+           'note': "The Raccoon (in the giant stump, Cindersap Forest, after the windstorm "
+                   "event) requests a series of items in exchange for rewards (seeds, the "
+                   "Raccoon Journal, etc). requests_completed counts finished requests. The "
+                   "specific items requested aren't stored per-request in the save - see "
+                   "wiki_page('The Raccoon') for the request sequence."}
+    if last_done:
+        out['days_when_last_request_finished'] = last_done
+    return out
+
 def net_worth(root):
     """Gold + sellable value of everything held (backpacks + chests + machine outputs).
     Data-driven from each item's own base sell price."""
@@ -1171,12 +1277,30 @@ def unlocks(root):
         'ginger_island': gate(island, 'Ginger Island: Island Trader, Volcano Dungeon, Prof. Snail, Qi walnut room',
                               "Repair Willy's boat in his back room (200 Hardwood, 5 Iridium Bars, 5 Battery Packs)."),
     }
+    def _root_flag(tag):
+        e = next(iter(root.iter(tag)), None)
+        return (e.text or '').strip().lower() == 'true' if e is not None and e.text else False
+    def _root_int(tag):
+        e = next(iter(root.iter(tag)), None)
+        return int(e.text) if e is not None and e.text and e.text.lstrip('-').isdigit() else 0
+    end_game = {
+        'mines_shrine_activated': _root_flag('mineShrineActivated'),
+        'skull_shrine_activated': _root_flag('skullShrineActivated'),
+        'mines_difficulty': _root_int('minesDifficulty'),          # 0=normal, 1=dangerous
+        'skull_caves_difficulty': _root_int('skullCavesDifficulty'),
+        'golden_parrot_activated': _root_flag('activatedGoldenParrot'),   # island fast-travel to the farm
+        'parrot_platforms_unlocked': _root_flag('parrotPlatformsUnlocked'),
+    }
     return {'deepest_mine_level': deepest,
             'keys': {'Rusty Key': has_rusty, 'Skull Key': has_skull, 'Club Card': has_club},
             'areas': areas,
+            'end_game': end_game,
             'note': "unlocked=true means the location/vendor is reachable in this save. When advising "
                     "how to obtain an item, drop or defer any source whose area is locked and surface "
-                    "its `requires` instead. Ginger Island detection is best-effort from mail flags."}
+                    "its `requires` instead. Ginger Island detection is best-effort from mail flags. "
+                    "end_game reports 1.6 toggles: mines/skull difficulty (0=normal, 1=dangerous - "
+                    "dangerous mines change monster/loot advice) and the golden-parrot / parrot-platform "
+                    "island fast-travel."}
 
 def can_complete_now(root):
     """Which incomplete CC bundles you could finish from items currently held.
@@ -1689,6 +1813,37 @@ def daily_briefing(root):
                      for o in qd['special_orders']['active']]
     dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][(day - 1) % 7]
     weather = _weather(root)
+    # Time-sensitive pickups. A tool "being upgraded" is hard to prove from the save
+    # alone: the daysLeftForToolUpgrade counter idles at 0 (no in-progress flag), and a
+    # missing tool could just be sitting in a chest. So we report a tool as POSSIBLY
+    # being upgraded only when its xsi:type is absent from the player's backpack, and
+    # say so - the model should not over-claim. House upgrade uses daysUntilHouseUpgrade
+    # where -1 = idle; a non-negative value = Robin is actively working (that many days
+    # left, 0 = done today).
+    UPGRADE_TOOLS = ['Axe', 'Pickaxe', 'Hoe', 'WateringCan']  # xsi:type strings (no space)
+    pending_pickups = []
+    for p in _players(root):
+        pname = _t(p, 'name', '?')
+        held_types = set()
+        items = p.find('items')
+        if items is not None:
+            for it in items.findall('Item'):
+                ty = it.get(XSI)
+                if ty in UPGRADE_TOOLS:
+                    held_types.add(ty)
+        missing = [t for t in UPGRADE_TOOLS if t not in held_types]
+        if missing:
+            pending_pickups.append({'player': pname, 'kind': 'tool_upgrade',
+                                    'tools_possibly_away': missing,
+                                    'where': "Clint's blacksmith shop",
+                                    'uncertain': True,
+                                    'note': 'Not in this player\'s backpack - being upgraded at Clint\'s, or stored in a chest. Treat as a reminder, not a certainty.'})
+        h_up = _t(p, 'daysUntilHouseUpgrade')
+        if h_up and h_up.lstrip('-').isdigit() and int(h_up) >= 0:
+            n = int(h_up)
+            pending_pickups.append({'player': pname, 'kind': 'house_upgrade', 'days_left': n,
+                                    'ready_today': n == 0,
+                                    'where': "Robin's carpenter shop"})
     return {'date':f"{season.title()} {day}, Year {ov['date']['year']}",
             'day_of_week': dow,
             'weather': weather,
@@ -1696,6 +1851,7 @@ def daily_briefing(root):
             'daily_luck':{'value':luck,'assessment':luck_txt},
             'birthdays_today':today_bd,
             'upcoming_birthdays':upcoming_b,
+            'pending_pickups':pending_pickups,
             'open_quests':open_quests,
             'open_quest_count':len(open_quests),
             'quests_completable_now':ready_now,
@@ -1707,7 +1863,9 @@ def daily_briefing(root):
             'animals_to_pet':unpet,'total_animals':len(animals),
             'note':'Morning digest read from the save. Build a prioritised plan: (1) time-sensitive '
                    'social - give a birthday villager a gift from `give_from_inventory` (or acquire '
-                   'one from `loved_gift_ideas`) for +8x friendship, and hit festivals; (2) real '
+                   'one from `loved_gift_ideas`) for +8x friendship, and hit festivals; (1b) pickups - '
+                   'collect anything in `pending_pickups` (a finished house upgrade at Robin\'s, or a '
+                   'tool that may be ready at Clint\'s); (2) real '
                    'tasks - progress `open_quests`/`active_special_orders` before their `due` date '
                    '(`days_left`); (3) efficient progression - use `next_goals` to push the nearest '
                    'wins. Use `weather` to plan the day - rain = skip watering + good rain-fish '

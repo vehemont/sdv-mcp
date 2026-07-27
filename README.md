@@ -1,6 +1,6 @@
 # sdv-mcp
 
-This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 54 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
+This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 58 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
 
 > [!CAUTION]
 > This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Then once you feel comfortable, you can point it at your real save to receive the save-per-night updates. 
@@ -145,6 +145,9 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `missing_recipes` | Cooking/crafting recipes learned-but-not-made (+ how many not yet learned), per player |
 | `shipping_tracker` | Items shipped by name + qty; distinct count vs the 154 Full-Shipment target |
 | `golden_walnuts` | Ginger Island walnut progress: found vs 130, unspent, island-unlock + repeatable sources |
+| `secret_notes` | Secret Notes found (1-25) with per-note found/missing flags |
+| `tailoring` | Every item you've tailored at the sewing machine / Emily's (resolved to names) |
+| `raccoon` | The 1.6 Raccoon storyline: requests completed, stage, times fed, current-request season |
 | `perfection` | Real weighted Perfection %: 11 categories, each with have/total + earned %. 1.6-accurate (Farmer Level = player.Level/25) + per-player co-op breakdown |
 | `daily_briefing` | Morning digest: luck, today/tomorrow weather, day-of-week + traveling cart (Fri/Sun), birthdays, festivals, open quests/special orders with `due`/`days_left`, machines/crops ready, pets due |
 | `gift_helper` | Birthdays (from save) + your hearts + loved gifts, flags what you already hold |
@@ -173,16 +176,17 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | Tool | What |
 |------|------|
 | `wiki_search` | Search the Stardew Valley Wiki (titles + snippets) |
-| `wiki_page` | A page (or one section) as clean text — to verify facts / pull context |
-| `wiki_infobox` | A page's infobox as structured fields (price/season/location) |
-| `how_to_obtain` | Every way to get an item (drops, shops, trades, gifting) — the wiki lead summary + infobox source. Plan how to get a quest/bundle item |
+| `wiki_page` | A page (or one section) as clean text — to verify facts / pull context. Rough input (`puffer fish`, `sturgeon`) is auto-resolved to the right page |
+| `wiki_infobox` | A page's infobox as structured fields (price/season/location). Auto-resolves rough input |
+| `wiki_category` | Every page in a wiki category (e.g. `Spring fish`, `Summer crops`) — answer "all X in season Y" exhaustively |
+| `how_to_obtain` | Every way to get an item (drops, shops, trades, gifting) — the wiki lead summary + infobox source. Plan how to get a quest/bundle item. Auto-resolves rough input (`bat wing`, `large goat milk`) |
 | `villager_schedule` | A villager's wiki schedule + your save's date/weather/hearts |
 
 ## Files
 - `sdv_parser.py` — the read-only save parser (ElementTree)
 - `sdv_wiki.py` — MediaWiki Action API client (api.php; the wiki's rest.php returns empty, so Action API it is), cached + rate-limited
 - `sdv_calc.py` — the calculators + reference tables
-- `sdv_mcp_server.py` — the 54 tools
+- `sdv_mcp_server.py` — the 58 tools
 
 ## Known limits
 - Vanilla + whatever the wiki documents only. Modded content lives on separate wikis.
