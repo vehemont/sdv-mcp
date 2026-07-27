@@ -89,6 +89,58 @@ def install_tool_logging():
     for name, tool in mcp._tool_manager._tools.items():
         tool.fn = _wrap_tool_for_logging(name, tool.fn)
 
+# ---- result stamping (staleness detection) ----------------------------------
+# Every save-backed result carries a `_save` stamp: the in-game date + the file's
+# mtime/size at the moment it was read. A result is FRESH iff that stamp equals the
+# current save_status() stamp; if the file changed since (player slept a night), the
+# stamp differs and the model must re-call the tool. This turns "is my data stale?"
+# from guesswork into a mechanical comparison.
+def _current_stamp():
+    """(in_game_date, mtime_ns, size) for the save in _LAST_RESOLVED, read live."""
+    info = _LAST_RESOLVED[0]
+    if not info:
+        return None
+    path = info[0]
+    try:
+        st = os.stat(path)
+        root = P.load_save(path)
+        date = f"{P._t(root,'currentSeason')} {P._t(root,'dayOfMonth',0)}, Year {P._t(root,'year',0)}"
+        return {'in_game_date': date, 'mtime_ns': st.st_mtime_ns, 'size': st.st_size}
+    except OSError:
+        return None
+
+def _stamp_result(result):
+    """Attach the current save stamp to a save-backed result. All save-backed tools
+    return dicts, so this just adds a `_save` key; anything else is returned as-is."""
+    stamp = _current_stamp()
+    if stamp is None or not isinstance(result, dict):
+        return result
+    return {**result, '_save': stamp}
+
+def _wrap_tool_for_stamping(name, fn):
+    """Wrap a save-backed tool (one that takes save_path) so its result carries a
+    `_save` freshness stamp. Wiki/calculator-only tools (no save_path) are untouched."""
+    if getattr(fn, "_sdv_stamped", False):
+        return fn
+    sig = inspect.signature(fn)
+    if "save_path" not in sig.parameters:
+        return fn
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            return _stamp_result(await fn(*args, **kwargs))
+    else:
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            return _stamp_result(fn(*args, **kwargs))
+    wrapper._sdv_stamped = True
+    return wrapper
+
+def install_result_stamping():
+    """Attach the freshness-stamp wrapper to every save-backed tool."""
+    for name, tool in mcp._tool_manager._tools.items():
+        tool.fn = _wrap_tool_for_stamping(name, tool.fn)
+
 def _make_property_nullable(prop):
     """Allow JSON null for one output-schema property in place."""
     if not isinstance(prop, dict):
@@ -130,9 +182,9 @@ General workflow:
 - Use the WIKI tools to verify game facts or look up things not in the save (prices, drop sources, recipes, event schedules).
 
 Freshness (IMPORTANT - the save file is a snapshot the game rewrites):
-- Every tool call reads the save file fresh off disk (it is never cached across calls), so a tool result is always current as of the file's last write. What can be STALE is a tool result from earlier in this conversation that you reuse instead of re-calling the tool.
-- Stardew only writes the save when it saves - overnight at the end of each in-game day, or on sleep/exit. So if the player has been playing since your last tool call, your earlier data may be behind. To get current data you must CALL THE TOOL AGAIN.
-- If the player says they did something new (slept a night, bought/crafted/harvested items, finished a quest) or your answer seems out of date, call save_status() to see the file's last-modified time and in-game date, then RE-RUN the relevant tool rather than relying on the earlier result.
+- Every tool call reads the save file fresh off disk, and every save-backed result carries a `_save` stamp: {in_game_date, mtime_ns, size} of the save at the moment it was read.
+- To check whether a result from EARLIER in this conversation is still current: call save_status() and compare its stamp. If the mtime_ns (or in_game_date) MATCHES the old result's `_save`, that result is still current and safe to reuse. If they DIFFER, the save changed (the player slept a night / advanced) - the old result is STALE, so re-call the relevant tool instead of reusing it.
+- Stardew only writes the save when it saves - overnight at the end of each in-game day, or on sleep/exit. So if the player reports doing something new, or your answer seems out of date, compare stamps via save_status() and RE-RUN the tool rather than reusing the earlier result.
 
 How to use the wiki efficiently (important):
 - If you already know the item/NPC/event name, do NOT use wiki_search. Call how_to_obtain("Item"), wiki_infobox("Exact Name"), or wiki_page("Exact Name") directly - the wiki is one page per topic and these follow redirects.
@@ -161,6 +213,10 @@ Skill = Literal["farming", "fishing", "foraging", "mining", "combat"]
 # May be a save FILE or a save FOLDER. Required - the server does not auto-discover.
 DEFAULT_SAVE = os.environ.get("SDV_SAVE_PATH") or os.environ.get("SDV_SAVE_DIR") or ""
 
+# The save most recently read by _resolve: (abs_path, mtime_ns, size). Used to stamp
+# save-backed results with a freshness marker (see install_result_stamping).
+_LAST_RESOLVED = [None]
+
 def _save_file_in_dir(d):
     """Given a Stardew save FOLDER, return its main save file. Stardew names the
     file the same as the folder; fall back to the first non-backup file."""
@@ -187,6 +243,9 @@ def _resolve(save_path: str = ""):
         target = _save_file_in_dir(target)
     if not os.path.isfile(target):
         raise ValueError(f"No save file at: {target}")
+    ap = os.path.abspath(target)
+    st = os.stat(target)
+    _LAST_RESOLVED[0] = (ap, st.st_mtime_ns, st.st_size)
     return P.load_save(target), target
 
 # ---- optional tool gating (disable tools deemed "cheating"/unfair) ---------
@@ -282,10 +341,10 @@ def overview(save_path: SavePath = "") -> dict:
     root, _ = _resolve(save_path); return P.overview(root)
 
 @mcp.tool()
-def players(save_path: SavePath = "") -> list:
+def players(save_path: SavePath = "") -> dict:
     """Every player: skill levels, XP, XP-to-next-level, professions, spouse,
-    backpack size, house-upgrade level."""
-    root, _ = _resolve(save_path); return P.players(root)
+    backpack size, house-upgrade level. Returns {'players': [...], '_save': stamp}."""
+    root, _ = _resolve(save_path); return {'players': P.players(root)}
 
 @mcp.tool()
 def community_center(save_path: SavePath = "") -> dict:
@@ -387,9 +446,10 @@ def museum(save_path: SavePath = "") -> dict:
     root, _ = _resolve(save_path); return P.museum(root)
 
 @mcp.tool()
-def monster_goals(save_path: SavePath = "") -> list:
-    """Adventurer's Guild eradication goals: kills vs target + reward per category."""
-    root, _ = _resolve(save_path); return P.monster_goals(root)
+def monster_goals(save_path: SavePath = "") -> dict:
+    """Adventurer's Guild eradication goals: kills vs target + reward per category.
+    Returns {'goals': [...], '_save': stamp}."""
+    root, _ = _resolve(save_path); return {'goals': P.monster_goals(root)}
 
 @mcp.tool()
 def friendships(save_path: SavePath = "") -> dict:
@@ -859,6 +919,7 @@ def main():
         if _removed:
             log.info("disabled %d tool(s): %s", len(_removed), ", ".join(_removed))
     install_tool_logging()
+    install_result_stamping()
     relax_output_schemas()
     log.info("starting sdv-mcp | save=%r | tools=%d | log_file=%s",
              DEFAULT_SAVE or "(none configured)", len(mcp._tool_manager._tools),

@@ -96,12 +96,12 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 ### Save state
 | Tool | What |
 |------|------|
-| `save_status` | Save freshness: file path, last-modified time, age, in-game date (tools always read the file fresh per call) |
+| `save_status` | Save freshness: file path, last-modified time, age, in-game date. Every save-backed result also carries a `_save` stamp (in-game date + file mtime/size) so the model can tell if earlier data is stale — compare its `_save.mtime_ns` to a fresh `save_status()` (equal = current, different = re-run the tool) |
 | `overview` | Date, players, shared money, lifetime earnings, deepest mine, version |
-| `players` | Per-player levels, XP, XP-to-next, professions, spouse, backpack, house |
+| `players` | Per-player levels, XP, XP-to-next, professions, spouse, backpack, house (`{'players': [...]}`) |
 | `community_center` | Rooms done/left, incomplete bundles + exact items needed, Vault status |
 | `museum` | Donations / 95 + next milestone (60 = Rusty Key) |
-| `monster_goals` | Guild eradication goals: kills vs target + reward |
+| `monster_goals` | Guild eradication goals: kills vs target + reward (`{'goals': [...]}`) |
 | `friendships` | Villager hearts/points + spouse, per player |
 | `player_tools` | Each player's tools + upgrade tier |
 | `wallet` | Keys/special items (Rusty Key, Skull Key, Club Card, ...). 1.5 + 1.6 aware (reads mail flags) |

@@ -236,14 +236,18 @@ def save_status(path):
         'save_path': os.path.abspath(path),
         'last_modified': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime)),
         'age_seconds': int(age),
+        # Stamp keys - match the `_save` block on every save-backed tool result.
+        'mtime_ns': st.st_mtime_ns,
+        'size': st.st_size,
         'in_game_date': {'day': int(_t(root, 'dayOfMonth', 0)),
                          'season': _t(root, 'currentSeason'),
                          'year': int(_t(root, 'year', 0))},
         'farm_name': _t(host, 'farmName'),
-        'note': 'Tools always read the save file fresh per call (cached by file '
-                'mtime/size, so any change re-parses). Stardew only writes this file '
-                'when it saves - i.e. overnight at end of each in-game day, or on '
-                'sleep/exit - so data is as current as the last time the game saved.',
+        'note': 'Every save-backed tool result carries a `_save` stamp {in_game_date, '
+                'mtime_ns, size}. To tell if an EARLIER result is still current, compare '
+                'its `_save` mtime_ns to this call\'s mtime_ns: equal = current, '
+                'different = stale (re-run the tool). The game only rewrites the save '
+                'when it saves - overnight each in-game day, or on sleep/exit.',
     }
 
 def overview(root):
