@@ -318,29 +318,61 @@ def infobox(title):
 
 def category(name, limit=200):
     """All member pages of a wiki category, e.g. 'Spring fish' -> the 37 spring-fish pages.
-    Accepts the name with or without the 'Category:' prefix and tolerates rough input
-    (resolves via allpages). Use this to answer 'all X in season Y' / 'every <type> of
-    <category>' questions exhaustively instead of guessing individual pages."""
-    cat = name.strip()
-    if not cat.lower().startswith("category:"):
-        cat = "Category:" + cat
-    d = _get({"action": "query", "list": "categorymembers", "cmtitle": cat,
-              "cmlimit": str(limit), "cmtype": "page|subcat"})
-    if "error" in d:
-        return {"category": cat, "error": d["error"].get("info", "not found")}
-    members = d.get("query", {}).get("categorymembers", [])
+    Accepts the name with or without the 'Category:' prefix. Category titles are
+    case-sensitive after the first character on MediaWiki, so this retries common
+    casings ('Summer Crops' -> 'Summer crops') and prefix-matches before giving up.
+    Use this to answer 'all X in season Y' / 'every <type> of <category>' questions
+    exhaustively instead of guessing individual pages."""
+    raw = name.strip()
+    if raw.lower().startswith("category:"):
+        raw = raw.split(":", 1)[1]
+
+    def members_of(title):
+        d = _get({"action": "query", "list": "categorymembers", "cmtitle": title,
+                  "cmlimit": str(limit), "cmtype": "page|subcat"})
+        if "error" in d:
+            return None, d["error"].get("info", "not found")
+        return d.get("query", {}).get("categorymembers", []), None
+
+    # Candidate casings, most-likely first: as-given, first-letter-upper/rest-lower,
+    # full lowercase, Title Case. MediaWiki needs the first letter capitalized and is
+    # case-sensitive after it, which is why 'Summer Crops' fails but 'Summer crops' works.
+    # Dedup on the EXACT string (case matters to the API), not on .lower().
+    cands, seen = [], set()
+    def add(c):
+        if c and c not in seen:
+            seen.add(c); cands.append(c)
+    add(raw)
+    add(raw[:1].upper() + raw[1:].lower() if raw else raw)
+    add(raw.lower())
+    add(raw.title())
+
+    members, resolved_cat, err = None, None, None
+    for c in cands:
+        title = "Category:" + c
+        members, err = members_of(title)
+        if members:
+            resolved_cat = title
+            break
     if not members:
-        # try to resolve a rough category name via prefix matching in the category namespace
-        rough = cat.split(":", 1)[1]
-        rd = _get({"action": "query", "list": "allpages", "apprefix": rough,
+        # Last resort: prefix-match within the category namespace (ns=14) for suggestions.
+        rd = _get({"action": "query", "list": "allpages", "apprefix": raw,
                    "aplimit": "8", "apnamespace": "14"})
-        # ns=14 titles already include the "Category:" prefix - don't double it
         suggestions = [p["title"] for p in rd.get("query", {}).get("allpages", [])]
-        return {"category": cat, "members": [], "suggestions": suggestions,
-                "hint": "No members - is the category name right? Closest: " + (", ".join(suggestions) if suggestions else "none")}
+        if not suggestions and raw:
+            # try a first-letter-capitalized prefix too
+            rd = _get({"action": "query", "list": "allpages",
+                       "apprefix": raw[:1].upper() + raw[1:], "aplimit": "8",
+                       "apnamespace": "14"})
+            suggestions = [p["title"] for p in rd.get("query", {}).get("allpages", [])]
+        return {"category": "Category:" + raw, "members": [], "suggestions": suggestions,
+                "hint": "No members. Category titles are case-sensitive - did you mean: " +
+                        (", ".join(suggestions) if suggestions else
+                         f"none. Try wiki_search(\"{raw}\") to find the right category.")}
+
     pages = [m["title"] for m in members if m["ns"] == 0]
     subcats = [m["title"] for m in members if m["ns"] == 14]
-    out = {"category": cat, "count": len(pages), "pages": pages,
+    out = {"category": resolved_cat, "count": len(pages), "pages": pages,
            "source": "Stardew Valley Wiki (CC BY-NC-SA)"}
     if subcats:
         out["subcategories"] = subcats

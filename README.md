@@ -114,7 +114,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `museum` | Donations / 95 + next milestone with its actual reward (60 = Rusty Key) |
 | `monster_goals` | Guild eradication goals: kills vs target + reward (`{'goals': [...]}`) |
 | `friendships` | Villager hearts/points + spouse, per player |
-| `gift_log` | Gifting planner: per-villager gifts today/this week (2/wk cap), talked-to-today, status + full gift history |
+| `gift_log` | Gifting planner: per-villager gifts today/this week (2/wk cap), status + full gift history (zero-count entries dropped) |
 | `player_stats` | In-game Stats tab: all counters (steps, shipped, fish caught, geodes, quests...) + per-species monster kills |
 | `player_tools` | Each player's tools + upgrade tier |
 | `wallet` | Keys/special items (Rusty Key, Skull Key, Club Card, ...). 1.5 + 1.6 aware (reads mail flags) |
@@ -140,8 +140,8 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `can_complete_now` | CC bundles you could finish from what's in your chests right now |
 | `bundle_sourcing` | Incomplete bundles + per missing-item wiki how-to-obtain + unlock-aware `locked_source_hints` (flags sources behind gated locations) |
 | `missing_museum` | Undonated minerals + artifacts, with where they drop |
-| `collections` | Collection tabs: fish caught (count + personal-record size), minerals/artifacts found — each joined to museum donations (what you HAVE but haven't donated) |
-| `cooking` | Cooking recipes known-but-not-made, with ingredients + on-hand count (cookable now) |
+| `collections` | Collection tabs (multiplayer-aware, unioned across all farmers): fish caught (count + personal-record size), minerals/artifacts found — each checked against the SHARED farm museum (what the farm still needs). Fish are never donatable; only artifacts + minerals are |
+| `cooking` | Cooking recipes known-but-not-made, with ingredients + on-hand count (cookable now). Kitchen access is farm-wide — anyone can cook if ANY house is upgraded (or they hold a Cookout Kit) |
 | `missing_recipes` | Cooking/crafting recipes learned-but-not-made (+ how many not yet learned), per player |
 | `shipping_tracker` | Items shipped by name + qty; distinct count vs the 154 Full-Shipment target |
 | `golden_walnuts` | Ginger Island walnut progress: found vs 130, unspent, island-unlock + repeatable sources |
@@ -178,7 +178,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `wiki_search` | Search the Stardew Valley Wiki (titles + snippets) |
 | `wiki_page` | A page (or one section) as clean text — to verify facts / pull context. Rough input (`puffer fish`, `sturgeon`) is auto-resolved to the right page |
 | `wiki_infobox` | A page's infobox as structured fields (price/season/location). Auto-resolves rough input |
-| `wiki_category` | Every page in a wiki category (e.g. `Spring fish`, `Summer crops`) — answer "all X in season Y" exhaustively |
+| `wiki_category` | Every page in a wiki category (e.g. `Spring fish`, `Summer crops`) — answer "all X in season Y" exhaustively. Case-insensitive (`Summer Crops` works) with near-match suggestions |
 | `how_to_obtain` | Every way to get an item (drops, shops, trades, gifting) — the wiki lead summary + infobox source. Plan how to get a quest/bundle item. Auto-resolves rough input (`bat wing`, `large goat milk`) |
 | `villager_schedule` | A villager's wiki schedule + your save's date/weather/hearts |
 
@@ -191,6 +191,6 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 ## Known limits
 - Vanilla + whatever the wiki documents only. Modded content lives on separate wikis.
 - `missing_recipes` lists recipes you've *learned* but not made; recipes not yet learned show only as a count (they aren't in the save). `shipping_tracker` lists what you've shipped by name — a by-name "still to ship" list isn't modelled (the save only stores what shipped), so its remaining count is approximate vs the 154-item set.
-- `quests`: `completable_now` covers item delivery/harvest/resource quests (you still hand the item in); monster/fishing/socialize quests report progress counters instead. Special-order objectives resolve their item (e.g. "Juice") and show `due`/`days_left`.
+- `quests`: `completable_now` covers item delivery/harvest/resource quests (you still hand the item in); monster/fishing/socialize quests report progress counters instead. Special-order objectives resolve their item (e.g. "Juice") and show `due`/`days_left`. `days_left` is omitted for untimed quests (billboard/fetch quests have no timer).
 - Item names come from a bundled catalog (`sdv_items.py`) generated from the game's unpacked assets, plus a fallback that resolves anything present in your save. Regenerate for a new game version with `python scripts/gen_items.py`.
 - Wiki tools need outbound network. The save tools don't.

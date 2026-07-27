@@ -521,42 +521,43 @@ def _museum_donated_ids(root):
 def collections(root):
     """The collection tabs the save tracks but no other tool surfaces: which fish
     you've caught (with personal-record size), and which minerals/artifacts you've
-    found - each joined against museum donations so you can see what you HAVE but
-    haven't donated yet (the gap that blocks the museum). Names from the bundled
-    item catalog. Fish detail also feeds next_goals/perfection 'Fish Caught'."""
-    host = root.find('player')
+    found - joined against the SHARED farm-wide museum so you can see what the farm
+    still needs. Multiplayer-aware: catches/finds are unioned across every farmer
+    (so nothing another player found is invisible), while each record keeps its
+    per-player personal-best detail. Names from the bundled item catalog."""
     donated = _museum_donated_ids(root)
 
     def name_of(iid):
         return ITEM.get(str(iid)) or f'#{iid}'
 
-    # fish: id -> [count, bestSizeInches]
-    # fish: id -> [count, bestSizeInches]. Only 5 "fish"-tab items are museum-donatable
-    # (1.6: Seaweed, Green/White Algae, River Jelly, Sea Jelly); actual fish aren't.
-    _DONATABLE_FISH = {'152', '153', '157', 'RiverJelly', 'SeaJelly'}
+    # fish: id -> [count, bestSizeInches], per player. Fish are NEVER museum-donatable
+    # (the museum takes only artifacts + minerals), so no donatable/donated fields here.
     fish = []
-    fc = host.find('fishCaught')
-    if fc is not None:
+    fc_seen = set()
+    for p in _players(root):
+        fc = p.find('fishCaught')
+        if fc is None:
+            continue
         for e in fc.findall('item'):
             iid = _norm_id(e.findtext('key/string'))
             ints = e.findall('value/ArrayOfInt/int')
             cnt = int(ints[0].text) if len(ints) > 0 and ints[0].text else 0
             size = int(ints[1].text) if len(ints) > 1 and ints[1].text else None
-            donatable = str(iid) in _DONATABLE_FISH
-            fish.append({'item': name_of(iid), 'caught': cnt,
-                         'best_size_in': (size if size and size > 0 else None),
-                         'donatable': donatable,
-                         'donated': (iid in donated) if donatable else None})
+            fish.append({'item': name_of(iid), 'player': _t(p, 'name'), 'caught': cnt,
+                         'best_size_in': (size if size and size > 0 else None)})
+            fc_seen.add(iid)
     fish.sort(key=lambda f: -f['caught'])
 
     def found_map(tag):
-        el = host.find(tag)
-        out = {}
-        if el is not None:
-            for e in el.findall('item'):
-                iid = _norm_id(e.findtext('key/string'))
-                v = e.findtext('value/int')
-                out[iid] = int(v) if v and v.lstrip('-').isdigit() else 1
+        """id -> total times found, unioned across all farmers."""
+        out = Counter()
+        for p in _players(root):
+            el = p.find(tag)
+            if el is not None:
+                for e in el.findall('item'):
+                    iid = _norm_id(e.findtext('key/string'))
+                    v = e.findtext('value/int')
+                    out[iid] += int(v) if v and v.lstrip('-').isdigit() else 1
         return out
 
     minerals = [{'item': name_of(i), 'found': n, 'donated': i in donated}
@@ -568,18 +569,19 @@ def collections(root):
         return [x['item'] for x in lst if x.get('donated') is False]
 
     return {
-        'fish': {'caught_species': len(fish), 'total': FISH_TOTAL,
-                 'records': fish, 'caught_not_donated': not_donated(fish)},
+        'fish': {'caught_species': len(fc_seen), 'total': FISH_TOTAL, 'records': fish},
         'minerals': {'found': len(minerals), 'total': MINERAL_TOTAL,
                      'items': minerals, 'found_not_donated': not_donated(minerals)},
         'artifacts': {'found': len(artifacts), 'total': ARTIFACT_TOTAL,
                       'items': artifacts, 'found_not_donated': not_donated(artifacts)},
-        'note': "caught/found = what you've ever obtained; donated = in the museum. "
-                "`*_not_donated` lists donatable items you have a record of but haven't "
-                "donated - donate those to grow the museum. Only 5 fish are donatable "
-                "(donatable=true); the rest of the fish tab isn't donatable (donated=null). "
-                "Fish best_size_in is your personal record (inches). Totals are the "
-                "vanilla collection-tab counts.",
+        'note': "Multiplayer-aware: fish/mineral/artifact records are unioned across ALL "
+                "farmers, and `donated` is checked against the SHARED farm museum (not the "
+                "host), so counts match `museum`. Fish records carry a `player` field (who "
+                "holds the personal best); `caught_species` is the distinct-species union. "
+                "The museum accepts ONLY artifacts + minerals - fish are never donatable, "
+                "so fish have no donatable/donated fields. `found_not_donated` = donatable "
+                "items the farm has found but not yet donated (the museum gap). "
+                "best_size_in is that player's personal record (inches).",
     }
 
 def player_stats(root):
@@ -670,7 +672,9 @@ def gift_log(root):
                         iid = _norm_id(x.findtext('key/string'))
                         v = x.findtext('value/int')
                         qty = int(v) if v and v.lstrip('-').isdigit() else 1
-                        if iid:
+                        # skip count<=0 entries: the save records 0 for items given but
+                        # not counted (e.g. books like Book_PriceCatalogue)
+                        if iid and qty > 0:
                             hist[ITEM.get(str(iid)) or f'#{iid}'] = qty
                 if npc:
                     gifted[npc] = hist
@@ -685,7 +689,6 @@ def gift_log(root):
                 def gi_(tag):
                     v = fr.findtext(tag)
                     return int(v) if v and v.lstrip('-').isdigit() else 0
-                talked = fr.findtext('TalkedToToday') == 'true'
                 gw, gd = gi_('GiftsThisWeek'), gi_('GiftsToday')
                 rows.append({
                     'villager': nm,
@@ -694,7 +697,6 @@ def gift_log(root):
                     'gifts_today': gd,
                     'gifts_this_week': gw,
                     'gifts_left_this_week': max(0, 2 - gw),
-                    'talked_to_today': talked,
                     'items_given': gifted.get(nm, {}),
                 })
         # giftable-first: those you can still give to this week, then by hearts asc
@@ -705,8 +707,8 @@ def gift_log(root):
     return {'players': players,
             'note': "gifts_left_this_week = 2 - GiftsThisWeek (cap resets Sunday). "
                     "gifts_today>0 means you already gave them one today (1/day). "
-                    "talked_to_today tracks the daily +20 friendship talk. items_given "
-                    "is the lifetime gift history per villager (item -> times given). "
+                    "items_given is the lifetime gift history per villager (item -> "
+                    "times given; zero-count entries dropped). "
                     "Sorted so villagers you can still gift this week come first."}
 
 DATABLE = {'Abigail','Penny','Leah','Maru','Haley','Emily',
@@ -893,9 +895,34 @@ def cooking(root):
             return total
         return by_id.get(str(iid), 0)
 
+    # Kitchen access is FARM-WIDE: any player may cook in any farmhouse/cabin on the
+    # farm, so a farmhand with an unupgraded cabin can cook if the host has a kitchen.
+    # Gate on "does ANY player have house level >= 1", never on the individual's cabin.
+    all_players = _players(root)
+    kitchen_locations = [{'player': _t(p, 'name'), 'building': 'FarmHouse'}
+                         for p in all_players
+                         if (lambda v: v is not None and v.lstrip('-').isdigit() and int(v) >= 1)
+                            (_t(p, 'houseUpgradeLevel'))]
+    farm_has_kitchen = len(kitchen_locations) > 0
+    # Cookout Kit (id 926) is a portable cooking source - only what THIS player holds
+    # in their own backpack counts (chests are shared, so we don't read those here).
+    def has_cookout_kit(p):
+        items = p.find('items')
+        if items is not None:
+            for it in items.findall('Item'):
+                idel = it.find('itemId')
+                if idel is None: idel = it.find('parentSheetIndex')
+                if idel is not None and _norm_id(idel.text) == '926':
+                    return True
+                nm = it.find('name')
+                if nm is not None and nm.text == 'Cookout Kit':
+                    return True
+        return False
+
     players = []
-    for p in _players(root):
+    for p in all_players:
         name = _t(p, 'name')
+        can_cook = farm_has_kitchen or has_cookout_kit(p)
         known = [k for k, v in _dict_pairs(p.find('cookingRecipes'))]
         cooked_ids = {_norm_id(k): (int(v) if v and v.lstrip('-').isdigit() else 0)
                       for k, v in _dict_pairs(p.find('recipesCooked'))}
@@ -919,19 +946,28 @@ def cooking(root):
                 have = on_hand_for(iid)
                 mats.append({'item': label, 'need': qty, 'on_hand': have})
             rows.append({'dish': dish, 'ingredients': mats,
-                         'cookable_now': all(m['on_hand'] >= m['need'] for m in mats)})
+                         'cookable_now': can_cook and all(m['on_hand'] >= m['need'] for m in mats)})
         rows.sort(key=lambda r: (r['cookable_now'] is not True, r['dish']))
         players.append({'player': name,
                         'known': len(known), 'made': len(made),
                         'unmade_count': len(unmade),
                         'cookable_now_count': sum(1 for r in rows if r['cookable_now']),
                         'unmade_recipes': rows})
-    return {'players': players, 'perfection_total': 81,
-            'note': "unmade_recipes = known but never cooked, each with ingredients and "
-                    "on_hand counts (backpacks+chests). cookable_now=true means you hold "
-                    "every ingredient. Category ingredients (any Fish/Egg/Milk/etc) count "
-                    "any matching held item. Dishes not in the local recipe table return "
-                    "ingredients=null - call wiki_page(dish) for those."}
+    out = {'players': players, 'perfection_total': 81,
+           'kitchen': {'available': farm_has_kitchen, 'locations': kitchen_locations},
+           'note': "unmade_recipes = known but never cooked, each with ingredients and "
+                   "on_hand counts (backpacks+chests). cookable_now=true means you hold "
+                   "every ingredient AND can cook. Kitchen access is FARM-WIDE - any "
+                   "player can cook in any upgraded house on the farm - so a farmhand "
+                   "whose own cabin isn't upgraded can still cook if someone else's house "
+                   "is. A held Cookout Kit also lets that player cook anywhere. "
+                   "Category ingredients (any Fish/Egg/Milk/etc) count "
+                   "any matching held item. Dishes not in the local recipe table return "
+                   "ingredients=null - call wiki_page(dish) for those."}
+    if not farm_has_kitchen:
+        out['kitchen']['blocked_reason'] = ("no kitchen on farm - upgrade ANY house to "
+                                            "level 1, or craft a Cookout Kit (Foraging 3)")
+    return out
 
 def missing_recipes(root):
     """Per player: cooking + crafting recipes LEARNED but not yet made (actionable
@@ -1075,14 +1111,19 @@ def raccoon(root):
         stage = 'all_known_requests_done'
     else:
         stage = 'in_progress'
-    out = {'requests_completed': completed, 'requests_known': len(done_flags),
-           'times_fed': fed, 'current_request_season': season,
+    out = {'requests_completed': completed, 'times_fed': fed,
+           'current_request_season': season,
            'stage': stage, 'active': active,
            'note': "The Raccoon (in the giant stump, Cindersap Forest, after the windstorm "
                    "event) requests a series of items in exchange for rewards (seeds, the "
-                   "Raccoon Journal, etc). requests_completed counts finished requests. The "
-                   "specific items requested aren't stored per-request in the save - see "
-                   "wiki_page('The Raccoon') for the request sequence."}
+                   "Raccoon Journal, etc). requests_completed counts finished requests. "
+                   "request_slots_unlocked is how many request slots the save has allocated - "
+                   "it reads 2 even before the storyline starts (the slots pre-exist), so it's "
+                   "only meaningful once stage != 'not_started'. The specific items requested "
+                   "aren't stored per-request in the save - see wiki_page('The Raccoon') for "
+                   "the request sequence."}
+    if stage != 'not_started':
+        out['request_slots_unlocked'] = len(done_flags)
     if last_done:
         out['days_when_last_request_finished'] = last_done
     return out
@@ -2025,10 +2066,11 @@ def _quest_fields(q, by_name, by_id, id2name=None):
         'accepted': g('accepted') == 'true',
         'completed': g('completed') == 'true',
         'daily_quest': g('dailyQuest') == 'true',
-        # daysLeft is always written but 0 for untimed quests - report null then.
-        'days_left': (int(g('daysLeft')) if (g('daysLeft') or '').lstrip('-').isdigit()
-                      and int(g('daysLeft')) > 0 else None),
     }
+    # daysLeft is always written but 0 for untimed quests - only surface days_left
+    # when a real timer exists, so untimed quests omit the key rather than show null.
+    if (g('daysLeft') or '').lstrip('-').isdigit() and int(g('daysLeft')) > 0:
+        d['days_left'] = int(g('daysLeft'))
     # type-specific requirement fields (best-effort; only added when present)
     deliver_to = g('target')
     if deliver_to: d['deliver_to'] = deliver_to
