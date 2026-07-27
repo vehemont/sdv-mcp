@@ -7,7 +7,7 @@ caller (CLI or MCP server) can present facts and make its own recommendations.
 The parser NEVER writes to the save.
 """
 from __future__ import annotations
-import os, re, xml.etree.ElementTree as ET
+import os, re, time, xml.etree.ElementTree as ET
 from collections import Counter
 
 XSI = '{http://www.w3.org/2001/XMLSchema-instance}type'
@@ -137,10 +137,11 @@ FISH = {
 # ---- loading --------------------------------------------------------------
 _CACHE = {}
 def load_save(path):
-    """Parse a save file into an ElementTree root. Cached by (path, mtime).
-    Handles the UTF-8 BOM and trailing null padding Stardew writes."""
-    mtime = os.path.getmtime(path)
-    key = (os.path.abspath(path), mtime)
+    """Parse a save file into an ElementTree root. Cached by (path, mtime, size)
+    so a changed file always re-parses. Handles the UTF-8 BOM and the trailing
+    null padding Stardew writes."""
+    st = os.stat(path)
+    key = (os.path.abspath(path), st.st_mtime_ns, st.st_size)
     if key in _CACHE:
         return _CACHE[key]
     data = open(path, 'rb').read()
@@ -148,6 +149,8 @@ def load_save(path):
     if end != -1:
         data = data[:end + len(b'</SaveGame>')]
     root = ET.fromstring(data)
+    # Replace atomically so a mid-write / malformed parse can never evict a good
+    # cached root: only assign the cache after a successful parse.
     _CACHE.clear(); _CACHE[key] = root
     return root
 
@@ -220,6 +223,29 @@ def _mail(root):
     return {s.text for s in m[0].findall('string')} if m else set()
 
 # ---- section builders (all return plain dicts/lists) ----------------------
+def save_status(path):
+    """Freshness/identity of the save file currently in use. Re-reads the file's
+    metadata live (not from cache) so it always reflects what's on disk right now.
+    Use this to confirm the model is looking at the most recent save."""
+    st = os.stat(path)
+    mtime = st.st_mtime
+    age = time.time() - mtime
+    root = load_save(path)  # fresh (path, mtime, size) parse of what's on disk
+    host = root.find('player')
+    return {
+        'save_path': os.path.abspath(path),
+        'last_modified': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime)),
+        'age_seconds': int(age),
+        'in_game_date': {'day': int(_t(root, 'dayOfMonth', 0)),
+                         'season': _t(root, 'currentSeason'),
+                         'year': int(_t(root, 'year', 0))},
+        'farm_name': _t(host, 'farmName'),
+        'note': 'Tools always read the save file fresh per call (cached by file '
+                'mtime/size, so any change re-parses). Stardew only writes this file '
+                'when it saves - i.e. overnight at end of each in-game day, or on '
+                'sleep/exit - so data is as current as the last time the game saved.',
+    }
+
 def overview(root):
     host = root.find('player')
     return {

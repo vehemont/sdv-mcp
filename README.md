@@ -1,6 +1,6 @@
 # sdv-mcp
 
-This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 49 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
+This is a read-only MCP server that reads a Stardew Valley save and answers questions about it, and is pulls your most recent save data per-call. I recently got into the game with my wife and noticed I was spending more time reading the Stardew Wiki rather than playing, so I made this to answer the questions I had. It includes 50 tools, and also allows Stardew Wiki search through MediaWiki API. I made this with mainly vanilla in mind, so YMMV with mods. 
 
 > [!CAUTION]
 > This MCP is read-only and should not cause any issues, but safety first is always the best approach! Use a save copy first, not an original. Then once you feel comfortable, you can point it at your real save to receive the save-per-night updates. 
@@ -96,6 +96,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 ### Save state
 | Tool | What |
 |------|------|
+| `save_status` | Save freshness: file path, last-modified time, age, in-game date (tools always read the file fresh per call) |
 | `overview` | Date, players, shared money, lifetime earnings, deepest mine, version |
 | `players` | Per-player levels, XP, XP-to-next, professions, spouse, backpack, house |
 | `community_center` | Rooms done/left, incomplete bundles + exact items needed, Vault status |
@@ -166,7 +167,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 - `sdv_parser.py` — the read-only save parser (ElementTree)
 - `sdv_wiki.py` — MediaWiki Action API client (api.php; the wiki's rest.php returns empty, so Action API it is), cached + rate-limited
 - `sdv_calc.py` — the calculators + reference tables
-- `sdv_mcp_server.py` — the 49 tools
+- `sdv_mcp_server.py` — the 50 tools
 
 ## Known limits
 - Vanilla + whatever the wiki documents only. Modded content lives on separate wikis.

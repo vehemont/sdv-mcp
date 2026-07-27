@@ -129,6 +129,11 @@ General workflow:
 - Answer from the SAVE first (inventory, quests, machines, buildings, friendships, perfection, ...). The save is the source of truth for THIS player's state and auto-loads the newest in-game day.
 - Use the WIKI tools to verify game facts or look up things not in the save (prices, drop sources, recipes, event schedules).
 
+Freshness (IMPORTANT - the save file is a snapshot the game rewrites):
+- Every tool call reads the save file fresh off disk (it is never cached across calls), so a tool result is always current as of the file's last write. What can be STALE is a tool result from earlier in this conversation that you reuse instead of re-calling the tool.
+- Stardew only writes the save when it saves - overnight at the end of each in-game day, or on sleep/exit. So if the player has been playing since your last tool call, your earlier data may be behind. To get current data you must CALL THE TOOL AGAIN.
+- If the player says they did something new (slept a night, bought/crafted/harvested items, finished a quest) or your answer seems out of date, call save_status() to see the file's last-modified time and in-game date, then RE-RUN the relevant tool rather than relying on the earlier result.
+
 How to use the wiki efficiently (important):
 - If you already know the item/NPC/event name, do NOT use wiki_search. Call how_to_obtain("Item"), wiki_infobox("Exact Name"), or wiki_page("Exact Name") directly - the wiki is one page per topic and these follow redirects.
 - Page titles are Capitalized and usually singular, e.g. "Rhubarb Seeds", "Sturgeon", "Stardrop". An item's main page usually also covers its seeds/products (the "Rhubarb" page lists seed price and shop).
@@ -260,6 +265,16 @@ class FishingForecast(TypedDict, total=False):
     catches_needed: int; note: str; error: str; known_fish: list
 
 # ============================ save/status tools ============================
+@mcp.tool()
+def save_status(save_path: SavePath = "") -> dict:
+    """Freshness of the save in use: file path, last-modified time, age in seconds,
+    and the in-game date it represents. Use this when it's important the answer
+    reflects the LATEST save - tools always read the file fresh per call, but the
+    game only writes it when it saves (overnight each in-game day / on sleep-exit),
+    so data is only as current as the game's last save. If a previous answer looked
+    stale, call save_status() then re-run the relevant tool."""
+    _, fp = _resolve(save_path); return P.save_status(fp)
+
 @mcp.tool()
 def overview(save_path: SavePath = "") -> dict:
     """Headline state: farm name, players, in-game date, shared money, lifetime
