@@ -111,7 +111,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `overview` | Date, players, shared money, lifetime earnings, deepest mine, version |
 | `players` | Per-player levels, XP, XP-to-next, professions, spouse, backpack, house (`{'players': [...]}`) |
 | `community_center` | Rooms done/left, incomplete bundles + exact items needed, Vault status |
-| `museum` | Donations / 95 + next milestone (60 = Rusty Key) |
+| `museum` | Donations / 95 + next milestone with its actual reward (60 = Rusty Key) |
 | `monster_goals` | Guild eradication goals: kills vs target + reward (`{'goals': [...]}`) |
 | `friendships` | Villager hearts/points + spouse, per player |
 | `player_tools` | Each player's tools + upgrade tier |
@@ -142,7 +142,7 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 | `shipping_tracker` | Items shipped by name + qty; distinct count vs the 154 Full-Shipment target |
 | `golden_walnuts` | Ginger Island walnut progress: found vs 130, unspent, island-unlock + repeatable sources |
 | `perfection` | Real weighted Perfection %: 11 categories, each with have/total + earned %. 1.6-accurate (Farmer Level = player.Level/25) + per-player co-op breakdown |
-| `daily_briefing` | Morning digest: luck, birthdays, festivals, machines/crops ready, pets due |
+| `daily_briefing` | Morning digest: luck, today/tomorrow weather, day-of-week + traveling cart (Fri/Sun), birthdays, festivals, open quests/special orders with `due`/`days_left`, machines/crops ready, pets due |
 | `gift_helper` | Birthdays (from save) + your hearts + loved gifts, flags what you already hold |
 | `ready_to_collect` | Machines with product ready (name, product, location + tile) + crops ready to harvest |
 | `fish_available` | Fish catchable now (season/weather/time), `only_uncaught` filters |
@@ -183,6 +183,6 @@ Two knobs, both settable as a CLI arg (wins) or an env var:
 ## Known limits
 - Vanilla + whatever the wiki documents only. Modded content lives on separate wikis.
 - `missing_recipes` lists recipes you've *learned* but not made; recipes not yet learned show only as a count (they aren't in the save). `shipping_tracker` lists what you've shipped by name — a by-name "still to ship" list isn't modelled (the save only stores what shipped), so its remaining count is approximate vs the 154-item set.
-- `quests`: `completable_now` covers item delivery/harvest/resource quests (you still hand the item in); monster/fishing/socialize quests report progress counters instead. Special-order item objectives aren't fully modelled.
+- `quests`: `completable_now` covers item delivery/harvest/resource quests (you still hand the item in); monster/fishing/socialize quests report progress counters instead. Special-order objectives resolve their item (e.g. "Juice") and show `due`/`days_left`.
 - Item names come from a bundled catalog (`sdv_items.py`) generated from the game's unpacked assets, plus a fallback that resolves anything present in your save. Regenerate for a new game version with `python scripts/gen_items.py`.
 - Wiki tools need outbound network. The save tools don't.

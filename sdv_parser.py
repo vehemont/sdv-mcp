@@ -64,8 +64,12 @@ CRAFT_RECIPES = {
 }
 
 MUSEUM_TOTAL = 95
-MUSEUM_MILESTONES = {11:'Ancient Seeds recipe',40:'Reward',50:'Reward',60:'Rusty Key (Sewers)',
- 70:'Reward',80:'Reward',90:'Reward',95:'Complete (Stardrop)'}
+# Total-donation milestone rewards (vanilla, from the Museum wiki page).
+MUSEUM_MILESTONES = {5:'Cauliflower Seeds (9)',10:'Melon Seeds (9)',15:'Starfruit Seeds',
+ 20:"'A Night On Eco-Hill' painting",25:"'Jade Hills' painting",30:'Lg. Futan Bear',
+ 35:'Pumpkin Seeds (9)',40:'Rarecrow #8 (+ Treasure Trove achievement)',
+ 50:'Bear Statue',60:'Rusty Key (Sewers)',70:'Triple Shot Espresso (3)',
+ 80:'Warp Totem: Farm (5)',90:'Magic Rock Candy',95:'Complete (Stardrop + A Complete Collection)'}
 
 # id -> name for CC bundle item slots (vanilla + common)
 ITEM = {'24':'Parsnip','16':'Wild Horseradish','18':'Daffodil','20':'Leek','22':'Dandelion',
@@ -917,6 +921,41 @@ def detect_mods(root):
 
 # ======================= player-life helpers ==============================
 SEASON_ORDER = ['spring','summer','fall','winter']
+
+def _day_of_year(day, season, year):
+    """Absolute day-of-save (the game's dueDate/clock unit): 112-day years,
+    28-day seasons. Year 1 Spring 1 = 1; Year 3 Spring 28 = 252."""
+    si = SEASON_ORDER.index(season) if season in SEASON_ORDER else 0
+    return (int(year) - 1) * 112 + si * 28 + int(day)
+
+def _day_of_year_to_str(doy):
+    """Inverse of _day_of_year: 259 -> 'Summer 7, Year 3'."""
+    if doy is None or doy < 1:
+        return None
+    doy -= 1
+    year = doy // 112 + 1
+    rem = doy % 112
+    season = SEASON_ORDER[rem // 28]
+    day = rem % 28 + 1
+    return f"{season.title()} {day}, Year {year}"
+
+def _weather(root):
+    """Today's and tomorrow's Valley weather. 1.6 stores per-region weather under
+    locationWeather; 'Default' is the Valley. Values: Sun/Rain/Storm/Snow/Wind/
+    GreenRain. Falls back to the legacy global isRaining flag if absent."""
+    lw = root.find('locationWeather')
+    if lw is not None:
+        for item in lw.findall('item'):
+            if item.findtext('key/string') != 'Default':
+                continue
+            v = item.find('value/LocationWeather')
+            if v is None:
+                break
+            today = v.findtext('weather/string') or v.findtext('Weather')
+            tmrw = v.findtext('weatherForTomorrow/string') or v.findtext('WeatherForTomorrow')
+            return {'today': today, 'tomorrow': tmrw}
+    raining = next((e.text for e in root.iter('isRaining')), 'false') == 'true'
+    return {'today': 'Rain' if raining else 'Sun', 'tomorrow': None}
 FESTIVALS = {
  ('spring',13):'Egg Festival',('spring',24):'Flower Dance',
  ('spring',15):'Desert Festival (15-17)',('spring',16):'Desert Festival',('spring',17):'Desert Festival',
@@ -1326,10 +1365,15 @@ def daily_briefing(root):
     open_quests.sort(key=lambda q: not q.get('completable_now', False))
     ready_now = sum(1 for q in open_quests if q.get('completable_now'))
     active_orders = [{'key':o['key'],'requester':o['requester'],
-                      'due_day_of_year':o['due_day_of_year'],
+                      'due':o.get('due'),'days_left':o.get('days_left'),
                       'objectives':o['objectives'],'reward_gold':o['reward_gold']}
                      for o in qd['special_orders']['active']]
+    dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][(day - 1) % 7]
+    weather = _weather(root)
     return {'date':f"{season.title()} {day}, Year {ov['date']['year']}",
+            'day_of_week': dow,
+            'weather': weather,
+            'traveling_cart_today': dow in ('Fri', 'Sun'),
             'daily_luck':{'value':luck,'assessment':luck_txt},
             'birthdays_today':today_bd,
             'upcoming_birthdays':upcoming_b,
@@ -1345,12 +1389,14 @@ def daily_briefing(root):
             'note':'Morning digest read from the save. Build a prioritised plan: (1) time-sensitive '
                    'social - give a birthday villager a gift from `give_from_inventory` (or acquire '
                    'one from `loved_gift_ideas`) for +8x friendship, and hit festivals; (2) real '
-                   'tasks - progress `open_quests`/`active_special_orders` before their deadlines; '
-                   '(3) efficient progression - use `next_goals` to push the nearest wins (a skill '
-                   'a few XP from a profession, a bundle needing 1-2 items, the closest perfection '
-                   'categories/museum milestone). Machines/petting/harvest are routine chores. For '
-                   'deeper detail call perfection, community_center, museum, missing_recipes, '
-                   'bundle_sourcing, special_orders and golden_walnuts.'}
+                   'tasks - progress `open_quests`/`active_special_orders` before their `due` date '
+                   '(`days_left`); (3) efficient progression - use `next_goals` to push the nearest '
+                   'wins. Use `weather` to plan the day - rain = skip watering + good rain-fish '
+                   '(Catfish), Storm = lightning rods + Battery Packs, and if `traveling_cart_today` '
+                   'is true (Fri/Sun) the Traveling Cart is in Cindersap Forest with rotating rare '
+                   'goods. Machines/petting/harvest are routine chores. For deeper detail call '
+                   'perfection, community_center, museum, missing_recipes, bundle_sourcing, '
+                   'special_orders and golden_walnuts.'}
 
 # ======================= container location tools =========================
 # playerChoiceColor RGB -> the in-game chest color name (the 20-color wheel).
@@ -1502,7 +1548,9 @@ def _quest_fields(q, by_name, by_id, id2name=None):
         'accepted': g('accepted') == 'true',
         'completed': g('completed') == 'true',
         'daily_quest': g('dailyQuest') == 'true',
-        'days_left': int(g('daysLeft') or 0),
+        # daysLeft is always written but 0 for untimed quests - report null then.
+        'days_left': (int(g('daysLeft')) if (g('daysLeft') or '').lstrip('-').isdigit()
+                      and int(g('daysLeft')) > 0 else None),
     }
     # type-specific requirement fields (best-effort; only added when present)
     deliver_to = g('target')
@@ -1561,22 +1609,48 @@ _OBJECTIVE_VERB = {'DeliverObjective':'Deliver','CollectObjective':'Collect',
  'GiftObjective':'Gift','JKScoreObjective':'Arcade score','ReachMineFloorObjective':'Reach mine floor',
  'DonateObjective':'Donate','ExploreAreaObjective':'Explore','GiftLoveObjective':'Give loved gift'}
 
+# Tag prefix -> what it actually names. 1.6 special-order context tags are a
+# comma-separated qualified-item-query, e.g. "juice_item, preserve_sheet_index_192".
+# The FIRST token is the deliverable's own tag (the item type); preserve_sheet_index_N
+# just records which base item produced it, so we resolve it but don't let it leak raw.
+_CTX_CATEGORY = {'juice_item': 'Juice', 'wine_item': 'Wine', 'jelly_item': 'Jelly',
+                 'pickles_item': 'Pickles', 'honey_item': 'Honey', 'egg_item': 'Egg',
+                 'milk_item': 'Milk', 'item_ectoplasm': 'Ectoplasm'}
+
 def _ctx_tag_to_item(tag, id2name=None):
-    """Turn an objective context tag into a readable item hint. 'item_ectoplasm'
-    -> 'ectoplasm'; 'id_o_141' -> resolved item name or '#141'; else the raw tag."""
+    """Turn an objective context tag into a readable item hint. Splits the
+    comma-separated qualified-item-query first, then resolves each token:
+    'item_ectoplasm' -> 'ectoplasm'; 'id_o_141' -> resolved name or '#141';
+    'juice_item'/'wine_item'/... -> the product name; 'preserve_sheet_index_N'
+    -> the base item for preserves (e.g. 192 -> 'Potato'); else the raw token."""
     if not tag:
         return None
-    parts = tag.split()
     out = []
-    for t in parts:
-        if t.startswith('id_o_'):
-            iid = t[5:]
-            out.append(ITEM.get(iid) or (id2name.get(iid) if id2name else None) or f'#{iid}')
-        elif t.startswith('item_'):
-            out.append(t[5:].replace('_', ' '))
-        else:
-            out.append(t)
-    return ', '.join(out)
+    for chunk in tag.split(','):
+        for t in chunk.split():
+            if not t:
+                continue
+            if t.startswith('preserve_sheet_index_'):
+                iid = t[len('preserve_sheet_index_'):]
+                base = ITEM.get(iid) or (id2name.get(iid) if id2name else None)
+                out.append(f'from {base}' if base else None)
+                continue
+            if t in _CTX_CATEGORY:
+                out.append(_CTX_CATEGORY[t])
+                continue
+            if t.startswith('id_o_'):
+                iid = t[5:]
+                out.append(ITEM.get(iid) or (id2name.get(iid) if id2name else None) or f'#{iid}')
+            elif t.startswith('item_'):
+                out.append(t[5:].replace('_', ' '))
+            else:
+                out.append(t)
+    # drop empties and exact dupes, keep order
+    seen = set(); res = []
+    for x in out:
+        if x and x not in seen:
+            seen.add(x); res.append(x)
+    return ', '.join(res) if res else None
 
 def _special_orders(root, id2name=None):
     """Parse the special-orders board: active (accepted), available, and completed.
@@ -1599,15 +1673,20 @@ def _special_orders(root, id2name=None):
                 'required': int(_t(ob, 'maxCount') or 0),
                 'item': _ctx_tag_to_item(_t(ob, 'acceptableContextTagSets'), id2name),
                 'target': _t(ob, 'targetName')}
+    today_doy = _day_of_year(_t(root, 'dayOfMonth', 1), _t(root, 'currentSeason'),
+                             _t(root, 'year', 1))
     def parse(o):
         name = _t(o, 'questName'); desc = _t(o, 'questDescription')
         token = lambda s: bool(s) and s.startswith('[') and s.endswith(']')
         g, mail = reward(o)
+        due = int(_t(o, 'dueDate')) if (_t(o, 'dueDate') or '').lstrip('-').isdigit() else None
         return {'key': _t(o, 'questKey'), 'requester': _t(o, 'requester'),
                 'name': None if token(name) else name,
                 'description': None if token(desc) else desc,
                 'state': _t(o, 'questState'),
-                'due_day_of_year': int(_t(o, 'dueDate')) if (_t(o, 'dueDate') or '').lstrip('-').isdigit() else None,
+                'due_day_of_year': due,
+                'due': _day_of_year_to_str(due) if due else None,
+                'days_left': (due - today_doy) if due is not None else None,
                 'objectives': [objective(ob) for ob in o.findall('objectives')],
                 'reward_gold': g, 'reward_mail': mail}
     def orders_in(tag):
@@ -1620,7 +1699,11 @@ def _special_orders(root, id2name=None):
             'completed_count': len(done), 'completed_keys': done,
             'note': "objectives show progress/required and the item to deliver/collect. name/"
                     "description are null when the save only stores a localisation token - use "
-                    "`key` + `requester` (e.g. key 'Wizard' = the Wizard's order) to identify it."}
+                    "`key` + `requester` (e.g. key 'Wizard' = the Wizard's order) to identify it. "
+                    "`due` is the human-readable deadline (Summer 7, Year 3) and `days_left` is "
+                    "days remaining; `due_day_of_year` is the raw absolute-day value. `reward_gold` "
+                    "is the order's completion payout only - it does NOT include the sell value of "
+                    "any items you ship/collect for it (those are separate income)."}
 
 def quests(root):
     """Every player's active quest log + the special-orders board. For item
