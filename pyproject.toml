@@ -4,14 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sdv-mcp"
-version = "0.4.1"
+version = "0.4.2"
 description = "Read-only MCP server for inspecting Stardew Valley save files: save parser, Stardew Wiki verification, and 18 calculators across 58 tools."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "vehemont" }]
 keywords = ["stardew-valley", "mcp", "model-context-protocol", "savegame"]
-dependencies = ["mcp>=1.2.0"]
+# Cap below 2.x: mcp 2.0 renamed FastMCP -> MCPServer and removed mcp.server.fastmcp.
+# Stay on the v1 FastMCP API until we migrate. See https://py.sdk.modelcontextprotocol.io/v2/whats-new/
+dependencies = ["mcp>=1.2.0,<2"]
 
 [project.urls]
 Homepage = "https://github.com/vehemont/sdv-mcp"

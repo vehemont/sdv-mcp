@@ -28,7 +28,7 @@ Example questions that utilize the state of your save, tailoring responses to yo
   - macOS/Linux: `~/.config/StardewValley/Saves/<FarmName>_<id>/<FarmName>_<id>`
 
   Point the server at that save file or its folder (`--save` / `--save-dir`, or the `SDV_SAVE_PATH` / `SDV_SAVE_DIR` env var). The server never searches for saves on its own.
-- **One Python dependency** — the `mcp` SDK (`mcp>=1.2.0`). Everything else uses the Python standard library (the wiki client is stdlib `urllib`), so there is nothing else to install.
+- **One Python dependency** — the `mcp` SDK (`mcp>=1.2.0,<2`). Everything else uses the Python standard library (the wiki client is stdlib `urllib`), so there is nothing else to install.
 - **`uv`** — only needed for the recommended `uvx` install method below (it provides the `uvx` command). Install it from [docs.astral.sh/uv](https://docs.astral.sh/uv/). Not required if you instead `pip install` the package or run from this folder.
 
 Install it with either:

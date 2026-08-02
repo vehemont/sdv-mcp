@@ -59,6 +59,29 @@ def setup_logging():
     setup_logging._done = True; setup_logging._path = path
     return path
 
+__version__ = "0.4.2"  # fallback; keep in sync with pyproject.toml
+
+def _version():
+    """Resolve the running server version. Prefer the pyproject.toml adjacent to this
+    module (accurate when running from the source tree, where an installed copy may be
+    stale); fall back to the installed distribution's metadata, then to __version__.
+    Never raises."""
+    d = os.path.dirname(os.path.abspath(__file__))
+    pj = os.path.join(d, "pyproject.toml")
+    try:
+        import tomllib
+        with open(pj, "rb") as f:
+            v = tomllib.load(f).get("project", {}).get("version")
+        if v:
+            return v
+    except Exception:
+        pass
+    try:
+        from importlib.metadata import version as _v
+        return _v("sdv-mcp")
+    except Exception:
+        return __version__
+
 def _wrap_tool_for_logging(name, fn):
     """Wrap a tool callable so any exception is logged with a full traceback before
     it propagates. Without this, a raised tool surfaces to the client only as an
@@ -1007,8 +1030,8 @@ def main():
     install_tool_logging()
     install_result_stamping()
     relax_output_schemas()
-    log.info("starting sdv-mcp | save=%r | tools=%d | log_file=%s",
-             DEFAULT_SAVE or "(none configured)", len(mcp._tool_manager._tools),
+    log.info("starting sdv-mcp v%s | save=%r | tools=%d | log_file=%s",
+             _version(), DEFAULT_SAVE or "(none configured)", len(mcp._tool_manager._tools),
              _logpath or "(stderr only)")
     mcp.run()
 
